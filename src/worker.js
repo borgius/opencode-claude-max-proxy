@@ -74,9 +74,8 @@ export class ClaudeContainer extends Container {
       const url = new URL(request.url);
       const containerPath = `http://container${url.pathname}${url.search}`;
 
-      // Forward request - remove internal header
+      // Forward request - keep X-OAuth-Creds header for container to read
       const forwardHeaders = new Headers(request.headers);
-      forwardHeaders.delete('X-OAuth-Creds');
 
       // Read body for non-GET requests
       let body = null;
