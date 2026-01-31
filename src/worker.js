@@ -37,13 +37,42 @@ export class ClaudeContainer {
   }
 
   async fetch(request) {
-    // Debug: return info about the container API availability
+    const container = this.ctx.container;
+
+    // Check what methods exist
+    const methodsExist = {
+      start: typeof container?.start === 'function',
+      running: typeof container?.running,
+      runningValue: container?.running,
+      getTcpPort: typeof container?.getTcpPort === 'function',
+      monitor: typeof container?.monitor === 'function',
+    };
+
+    // Try to start the container
+    let startResult = null;
+    let startError = null;
+    try {
+      if (methodsExist.start && !container.running) {
+        container.start({
+          env: {
+            CLAUDE_OAUTH_CREDS: this.env.CLAUDE_OAUTH_CREDS || 'NOT_SET',
+            PORT: '8080'
+          }
+        });
+        startResult = 'started';
+      } else if (container.running) {
+        startResult = 'already running';
+      }
+    } catch (e) {
+      startError = e.message;
+    }
+
     return new Response(JSON.stringify({
       debug: true,
-      hasCtx: !!this.ctx,
-      hasContainer: !!this.ctx?.container,
-      containerKeys: this.ctx?.container ? Object.keys(this.ctx.container) : [],
-      envKeys: Object.keys(this.env || {})
+      methodsExist,
+      startResult,
+      startError,
+      hasOAuthCreds: !!this.env.CLAUDE_OAUTH_CREDS
     }, null, 2), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
