@@ -25,17 +25,14 @@ jobs:
       - name: Install Wrangler
         run: npm install -g wrangler
 
-      - name: Authenticate Wrangler
-        run: echo "${{ secrets.CLOUDFLARE_API_TOKEN }}" | wrangler login --api-token
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
       - name: Build and push container image
-        run: wrangler containers build --push
+        run: npx wrangler containers build --push
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy to Cloudflare
-        run: wrangler deploy
+        run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
