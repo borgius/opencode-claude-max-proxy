@@ -31,34 +31,29 @@ export default {
 };
 
 export class ClaudeContainer {
-  constructor(state, env) {
-    this.state = state;
+  constructor(ctx, env) {
+    this.ctx = ctx;
     this.env = env;
+
+    // Start container on first request
+    this.ctx.blockConcurrencyWhile(async () => {
+      this.ctx.container.start({
+        env: {
+          CLAUDE_OAUTH_CREDS: env.CLAUDE_OAUTH_CREDS,
+          PORT: '8080'
+        }
+      });
+    });
   }
 
   async fetch(request) {
-    // Get or create container instance
-    if (!this.container) {
-      // Check if we have a saved container
-      const saved = await this.state.storage.get('container');
-      if (saved) {
-        this.container = saved;
-      } else {
-        // Spawn new container
-        this.container = await this.env.ClaudeContainer.spawn({
-          env: {
-            CLAUDE_OAUTH_CREDS: this.env.CLAUDE_OAUTH_CREDS,
-            PORT: '8080'
-          }
-        });
-        await this.state.storage.put('container', this.container);
-      }
-    }
+    // Get TCP port to container
+    const port = this.ctx.container.getTcpPort(8080);
 
     // Forward request to container
     const containerUrl = new URL(request.url);
     containerUrl.protocol = 'http:';
-    containerUrl.host = `${this.container.ip}:8080`;
+    containerUrl.host = port.host;
 
     const containerRequest = new Request(containerUrl, {
       method: request.method,
