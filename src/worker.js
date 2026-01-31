@@ -1,3 +1,5 @@
+import { Container } from "@cloudflare/containers";
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -32,7 +34,7 @@ export default {
           body: bodyText,
         });
 
-        // Forward request to container
+        // Forward request to Durable Object which will proxy to container
         return await stub.fetch(modifiedRequest);
       } catch (error) {
         return new Response(JSON.stringify({
@@ -50,69 +52,32 @@ export default {
   }
 };
 
-export class ClaudeContainer {
-  constructor(ctx, env) {
-    this.ctx = ctx;
-    this.env = env;
-  }
+// Extend Container class with defaultPort
+export class ClaudeContainer extends Container {
+  // Set the default port that the container listens on
+  defaultPort = 8080;
 
-  async fetch(request) {
+  // Override containerFetch to forward requests to the container
+  async containerFetch(request) {
     try {
-      const container = this.ctx.container;
-
-      // Debug endpoint - container state
-      if (request.url.includes('debug=1')) {
-        return new Response(JSON.stringify({
-          containerRunning: container?.running,
-          containerMethods: container ? Object.getOwnPropertyNames(Object.getPrototypeOf(container)) : []
-        }, null, 2), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
       // Get OAuth creds from header
       const oauthCreds = request.headers.get('X-OAuth-Creds') || '';
 
-      // Start container if not running
-      if (!container.running) {
-        container.start({
+      // Start container with environment if not running
+      if (!this.running()) {
+        await this.start({
           env: {
             CLAUDE_OAUTH_CREDS: oauthCreds,
             PORT: '8080'
           }
         });
-
-        // Short wait (max 10 seconds to avoid timeout)
-        for (let i = 0; i < 10; i++) {
-          if (container.running) break;
-          await new Promise(r => setTimeout(r, 1000));
-        }
       }
 
-      // If still not running, return retry response
-      if (!container.running) {
-        return new Response(JSON.stringify({
-          error: 'Container is starting, please retry in a few seconds',
-          status: 'starting',
-          retryAfter: 5
-        }), {
-          status: 503,
-          headers: {
-            'Content-Type': 'application/json',
-            'Retry-After': '5'
-          }
-        });
-      }
-
-      // Get TCP port to container - this returns a TcpPort object with its own fetch() method
-      const port = container.getTcpPort(8080);
-
-      // Build the URL path for the container
+      // Build the container URL
       const url = new URL(request.url);
       const containerPath = `http://container${url.pathname}${url.search}`;
 
-      // Forward request using port.fetch() - remove internal header
+      // Forward request - remove internal header
       const forwardHeaders = new Headers(request.headers);
       forwardHeaders.delete('X-OAuth-Creds');
 
@@ -122,20 +87,16 @@ export class ClaudeContainer {
         body = await request.text();
       }
 
-      // Use port.fetch() to send request to container
-      const containerResponse = await port.fetch(containerPath, {
+      // Use fetch to send request to container
+      return await fetch(containerPath, {
         method: request.method,
         headers: forwardHeaders,
         body: body,
       });
-
-      return containerResponse;
-
     } catch (error) {
       return new Response(JSON.stringify({
         error: error.message,
-        stack: error.stack,
-        containerRunning: this.ctx?.container?.running
+        stack: error.stack
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
