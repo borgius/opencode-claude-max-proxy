@@ -59,7 +59,24 @@ const server = http.createServer(async (req, res) => {
       try {
         const requestData = JSON.parse(body);
 
-        if (!anthropic) {
+        // Try to get credentials from header if not in env
+        let client = anthropic;
+        if (!client) {
+          const headerCreds = req.headers['x-oauth-creds'];
+          if (headerCreds) {
+            try {
+              const creds = JSON.parse(headerCreds);
+              if (creds.accessToken) {
+                client = new Anthropic({ apiKey: creds.accessToken });
+                console.log('Using credentials from header');
+              }
+            } catch (e) {
+              console.error('Failed to parse header credentials:', e.message);
+            }
+          }
+        }
+
+        if (!client) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             error: {
@@ -75,7 +92,7 @@ const server = http.createServer(async (req, res) => {
 
         if (isStreaming) {
           // Streaming response
-          const stream = await anthropic.messages.create({
+          const stream = await client.messages.create({
             ...requestData,
             stream: true,
           });
@@ -92,7 +109,7 @@ const server = http.createServer(async (req, res) => {
           res.end();
         } else {
           // Non-streaming response
-          const message = await anthropic.messages.create({
+          const message = await client.messages.create({
             ...requestData,
             stream: false,
           });
