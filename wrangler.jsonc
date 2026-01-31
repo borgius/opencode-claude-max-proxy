@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "opencode-claude-proxy",
+  "main": "src/worker.js",
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Container configuration
+  "containers": [
+    {
+      "class_name": "ClaudeContainer",
+      "image": "./Dockerfile",
+      "instance_type": "standard-2",
+      "max_instances": 5
+    }
+  ],
+
+  // Durable Objects
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "ClaudeContainer",
+        "name": "CLAUDE_CONTAINER"
+      }
+    ]
+  },
+
+  // Migrations
+  "migrations": [
+    {
+      "new_sqlite_classes": ["ClaudeContainer"],
+      "tag": "v1"
+    }
+  ]
+
+  // Secrets (set via `wrangler secret put`):
+  // - CLAUDE_OAUTH_CREDS (JSON string with OAuth credentials)
+  // - PROXY_API_KEY (optional auth for proxy)
+}
