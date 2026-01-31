@@ -1,20 +1,9 @@
-FROM node:22-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install Claude CLI
-RUN npm install -g @anthropic-ai/claude-agent-sdk
+COPY server.py .
 
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy application code
-COPY src ./src
-
-# Expose port for container communication
 EXPOSE 8080
 
-CMD ["node", "src/container-server.cjs"]
+CMD ["python", "-u", "server.py"]
