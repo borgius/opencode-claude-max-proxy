@@ -1,51 +1,35 @@
 {
-  "name": "opencode-claude-max-proxy",
-  "version": "1.0.2",
-  "description": "Use your Claude Max subscription with OpenCode via proxy server",
+  "name": "opencode-claude-proxy",
+  "version": "3.0.0",
+  "description": "Cloudflare Containers proxy for OpenCode using Claude Max subscription",
   "type": "module",
-  "main": "./src/proxy/server.ts",
-  "bin": {
-    "claude-max-proxy": "./bin/claude-proxy.ts"
-  },
-  "exports": {
-    ".": "./src/proxy/server.ts"
-  },
+  "main": "src/worker.js",
   "scripts": {
-    "start": "bun run ./bin/claude-proxy.ts",
-    "proxy": "bun run ./bin/claude-proxy.ts",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "dev": "wrangler dev",
+    "deploy": "./deploy.sh",
+    "deploy:manual": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "tail": "wrangler tail",
+    "containers:list": "wrangler containers list",
+    "containers:images": "wrangler containers images list"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.25",
-    "glob": "^13.0.0",
-    "hono": "^4.11.4"
+    "@anthropic-ai/sdk": "^0.36.1"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.21",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.8.2"
+    "@anthropic-ai/claude-agent-sdk": "^0.2.27",
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "typescript": "^5.8.2",
+    "wrangler": "^3.99.0"
   },
-  "files": [
-    "bin/",
-    "src/proxy/",
-    "src/logger.ts",
-    "README.md"
-  ],
   "keywords": [
     "opencode",
-    "opencode-ai",
-    "opencode-plugin",
     "claude",
-    "claude-max",
-    "claude-code",
     "anthropic",
-    "ai-coding",
-    "ai-assistant",
-    "proxy",
-    "claude-agent-sdk",
-    "llm",
-    "coding-assistant"
+    "cloudflare-workers",
+    "cloudflare-containers",
+    "claude-max",
+    "proxy"
   ],
   "repository": {
     "type": "git",
@@ -56,6 +40,5 @@
     "url": "https://github.com/rynfar/opencode-claude-max-proxy/issues"
   },
   "author": "rynfar",
-  "license": "MIT",
-  "private": false
+  "license": "MIT"
 }

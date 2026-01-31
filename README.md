@@ -1,200 +1,294 @@
-# opencode-claude-max-proxy
+# opencode-claude-proxy
 
-[![npm version](https://img.shields.io/npm/v/opencode-claude-max-proxy.svg)](https://www.npmjs.com/package/opencode-claude-max-proxy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/rynfar/opencode-claude-max-proxy.svg)](https://github.com/rynfar/opencode-claude-max-proxy/stargazers)
 
-Use your **Claude Max subscription** with OpenCode.
+**Use your Claude Max subscription with OpenHands via Cloudflare Containers** - No Anthropic API credits needed!
 
-## The Problem
-
-Anthropic doesn't allow Claude Max subscribers to use their subscription with third-party tools like OpenCode. If you want to use Claude in OpenCode, you have to pay for API access separately - even though you're already paying for "unlimited" Claude.
-
-Your options are:
-1. Use Claude's official apps only (limited to their UI)
-2. Pay again for API access on top of your Max subscription
-3. **Use this proxy**
-
-## The Solution
-
-This proxy bridges the gap using Anthropic's own tools:
-
-```
-OpenCode → Proxy (localhost:3456) → Claude Agent SDK → Your Claude Max Subscription
-```
-
-The [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) is Anthropic's **official npm package** that lets developers build with Claude using their Max subscription. This proxy simply translates OpenCode's API requests into SDK calls.
-
-**Your Max subscription. Anthropic's official SDK. Zero additional cost.**
-
-## Is This Allowed?
-
-**Yes.** Here's why:
-
-| Concern | Reality |
-|---------|---------|
-| "Bypassing restrictions" | No. We use Anthropic's public SDK exactly as documented |
-| "Violating TOS" | No. The SDK is designed for programmatic Claude access |
-| "Unauthorized access" | No. You authenticate with `claude login` using your own account |
-| "Reverse engineering" | No. We call `query()` from their npm package, that's it |
-
-The Claude Agent SDK exists specifically to let Max subscribers use Claude programmatically. We're just translating the request format so OpenCode can use it.
-
-**~200 lines of TypeScript. No hacks. No magic. Just format translation.**
+This project deploys a serverless proxy using **Cloudflare Containers** (Docker-based) that authenticates with your Claude Max subscription, enabling you to use OpenHands and other tools without purchasing separate API credits.
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
-| **Zero API costs** | Uses your Claude Max subscription, not per-token billing |
-| **Full compatibility** | Works with any Anthropic model in OpenCode |
-| **Streaming support** | Real-time SSE streaming just like the real API |
-| **Auto-start** | Optional launchd service for macOS |
-| **Simple setup** | Two commands to get running |
+| **Claude Max Integration** | Uses your existing Claude Max subscription via OAuth |
+| **Cloudflare Containers** | Full Docker support with Node.js + Claude SDK |
+| **Serverless & Scale-to-Zero** | Only pay when actively processing requests |
+| **Global Edge Deployment** | Low latency worldwide |
+| **Streaming support** | Real-time SSE streaming |
+| **No API Credits Needed** | Leverage your Claude Max subscription |
 
 ## Prerequisites
 
-1. **Claude Max subscription** - [Subscribe here](https://claude.ai/settings/subscription)
+1. **Claude Max subscription** - Active subscription with CLI access
+2. **Cloudflare Workers Paid plan** - Required for Containers ($5/month)
+3. **Docker** installed and running - `docker info` should work
+4. **Node.js** 18+ installed
+5. **macOS** (for keychain credential extraction) or manual credential management
 
-2. **Claude CLI** installed and authenticated:
-   ```bash
-   npm install -g @anthropic-ai/claude-code
-   claude login
-   ```
+## Quick Start
 
-3. **Bun** runtime:
-   ```bash
-   curl -fsSL https://bun.sh/install | bash
-   ```
-
-## Installation
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/rynfar/opencode-claude-max-proxy
 cd opencode-claude-max-proxy
-bun install
+npm install
 ```
 
-## Usage
-
-### Start the Proxy
+### 2. Authenticate with Claude CLI
 
 ```bash
-bun run proxy
+npx claude login
 ```
 
-### Run OpenCode
+This stores OAuth credentials in your macOS keychain.
+
+### 3. Authenticate with Cloudflare
 
 ```bash
-ANTHROPIC_API_KEY=dummy ANTHROPIC_BASE_URL=http://127.0.0.1:3456 opencode
+npx wrangler login
 ```
 
-Select any `anthropic/claude-*` model (opus, sonnet, haiku).
-
-### One-liner
+### 4. Deploy
 
 ```bash
-bun run proxy & ANTHROPIC_API_KEY=dummy ANTHROPIC_BASE_URL=http://127.0.0.1:3456 opencode
+npm run deploy
 ```
 
-## Auto-start on macOS
+The deploy script will:
+- Extract OAuth credentials from your keychain
+- Upload them as encrypted Cloudflare secrets
+- Build the Docker container
+- Deploy to Cloudflare Containers
 
-Set up the proxy to run automatically on login:
+Your proxy will be available at: `https://opencode-claude-proxy.<your-account>.workers.dev`
+
+## Detailed Setup
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for:
+- Manual deployment steps
+- Configuration options
+- Instance type selection
+- Troubleshooting
+- Security best practices
+
+## Usage with OpenHands
+
+Configure OpenHands to use your proxy:
 
 ```bash
-cat > ~/Library/LaunchAgents/com.claude-max-proxy.plist << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.claude-max-proxy</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$(which bun)</string>
-        <string>run</string>
-        <string>proxy</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>$(pwd)</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-</dict>
-</plist>
-EOF
+export LLM_BASE_URL=https://opencode-claude-proxy.<your-account>.workers.dev
+export LLM_API_KEY=dummy  # Not validated
+export LLM_MODEL=claude-sonnet-4-20250514
 
-launchctl load ~/Library/LaunchAgents/com.claude-max-proxy.plist
+# Start OpenHands
+openhands
 ```
 
-Then add an alias to `~/.zshrc`:
+Or add to your OpenHands config file:
 
-```bash
-echo "alias oc='ANTHROPIC_API_KEY=dummy ANTHROPIC_BASE_URL=http://127.0.0.1:3456 opencode'" >> ~/.zshrc
-source ~/.zshrc
+```yaml
+llm:
+  base_url: https://opencode-claude-proxy.<your-account>.workers.dev
+  api_key: dummy
+  model: claude-sonnet-4-20250514
 ```
 
-Now just run `oc` to start OpenCode with Claude Max.
+## Architecture
 
-## Model Mapping
-
-| OpenCode Model | Claude SDK |
-|----------------|------------|
-| `anthropic/claude-opus-*` | opus |
-| `anthropic/claude-sonnet-*` | sonnet |
-| `anthropic/claude-haiku-*` | haiku |
-
-## Configuration
-
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `CLAUDE_PROXY_PORT` | 3456 | Proxy server port |
-| `CLAUDE_PROXY_HOST` | 127.0.0.1 | Proxy server host |
+```
+┌─────────────┐
+│  OpenHands  │
+│   Request   │
+└──────┬──────┘
+       │
+       v
+┌─────────────────────────────────┐
+│   Cloudflare Worker (Edge)      │
+│   - Request routing             │
+│   - Durable Object management   │
+└──────────────┬──────────────────┘
+               │
+               v
+┌──────────────────────────────────┐
+│  Durable Object (State Manager)  │
+│  - Container lifecycle           │
+│  - Request forwarding            │
+└──────────────┬───────────────────┘
+               │
+               v
+┌───────────────────────────────────┐
+│   Docker Container                │
+│   - Node.js + Claude SDK          │
+│   - OAuth credentials (encrypted) │
+│   - HTTP server on port 8080      │
+└──────────────┬────────────────────┘
+               │
+               v
+┌──────────────────────────┐
+│   Anthropic API          │
+│   (Claude Max Auth)      │
+└──────────────────────────┘
+```
 
 ## How It Works
 
-1. **OpenCode** sends a request to `http://127.0.0.1:3456/messages` (thinking it's the Anthropic API)
-2. **Proxy** receives the request and extracts the messages
-3. **Proxy** calls `query()` from the Claude Agent SDK with your prompt
-4. **Claude Agent SDK** authenticates using your Claude CLI login (tied to your Max subscription)
-5. **Claude** processes the request using your subscription
-6. **Proxy** streams the response back in Anthropic SSE format
-7. **OpenCode** receives the response as if it came from the real API
+1. **Request arrives** at Cloudflare Worker edge location
+2. **Worker spawns/reuses** a Durable Object to manage container state
+3. **Durable Object starts** a Docker container if needed (or reuses existing)
+4. **Container authenticates** with Anthropic using your Claude Max OAuth credentials
+5. **Response streams** back through the chain to OpenHands
 
-The proxy is ~200 lines of TypeScript. No magic, no hacks.
+Containers automatically **scale to zero** when idle, saving costs.
 
-## FAQ
+## API Endpoints
 
-### Why do I need `ANTHROPIC_API_KEY=dummy`?
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/v1/messages` | POST | Anthropic Messages API (compatible) |
 
-OpenCode requires an API key to be set, but we never actually use it. The Claude Agent SDK handles authentication through your Claude CLI login. Any non-empty string works.
+## Configuration
 
-### Does this work with other tools besides OpenCode?
+### Environment Variables (Container)
 
-Yes! Any tool that uses the Anthropic API format can use this proxy. Just point `ANTHROPIC_BASE_URL` to `http://127.0.0.1:3456`.
+Set via Cloudflare secrets:
 
-### What about rate limits?
+| Secret | Description | How to Set |
+|--------|-------------|------------|
+| `CLAUDE_OAUTH_CREDS` | OAuth credentials JSON from keychain | Auto-set by deploy script |
 
-Your Claude Max subscription has its own usage limits. This proxy doesn't add any additional limits.
+### Container Settings (wrangler.toml)
 
-### Is my data sent anywhere else?
+```toml
+[[containers]]
+name = "CONTAINERS"
+image = "./Dockerfile"
+instance_type = "standard-2"  # Adjust based on needs
+max_instances = 5              # Max concurrent containers
+```
 
-No. The proxy runs locally on your machine. Your requests go directly to Claude through the official SDK.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for all instance types and configuration options.
+
+## Cost Breakdown
+
+### Cloudflare
+- **Workers Paid Plan**: $5/month (required for Containers)
+- **Container runtime**: Scale-to-zero pricing (only pay when running)
+- **Storage**: Minimal (container images)
+
+### Claude
+- **Claude Max**: Your existing subscription (no additional API costs!)
+
+**Total additional cost**: ~$5-10/month depending on usage
+
+## Testing
+
+```bash
+# Health check
+curl https://opencode-claude-proxy.<account>.workers.dev/health
+
+# Send a message
+curl -X POST https://opencode-claude-proxy.<account>.workers.dev/v1/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "max_tokens": 100,
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
+
+## Monitoring
+
+```bash
+# View live logs
+npm run tail
+
+# List running containers
+npm run containers:list
+
+# View container images
+npm run containers:images
+```
 
 ## Troubleshooting
 
-### "Authentication failed"
+### "Container not ready"
+Wait 2-3 minutes after first deployment for container provisioning.
 
-Run `claude login` to authenticate with the Claude CLI.
+### "Authentication error"
+Re-run the deployment script to refresh OAuth credentials:
+```bash
+npm run deploy
+```
 
-### "Connection refused"
+Or manually update the secret:
+```bash
+OAUTH_CREDS=$(security find-generic-password -s "Claude Code-credentials" -a "admin" -w)
+echo "$OAUTH_CREDS" | wrangler secret put CLAUDE_OAUTH_CREDS
+```
 
-Make sure the proxy is running: `bun run proxy`
+### "Docker not running"
+Ensure Docker Desktop is running:
+```bash
+docker info
+```
 
-### Proxy keeps dying
+### Container crashes
+Check logs for errors:
+```bash
+npm run tail
+```
 
-Use the launchd service (see Auto-start section) which automatically restarts the proxy.
+### Token expired
+The OAuth credentials include a refresh token. If you see persistent auth errors:
+1. Run `npx claude login` again
+2. Re-deploy: `npm run deploy`
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed troubleshooting.
+
+## Why Cloudflare Containers?
+
+Unlike traditional Cloudflare Workers (JavaScript/WASM only), **Cloudflare Containers** allows running full Docker containers, which enables:
+
+- Running the Claude CLI and Node.js SDK
+- Persistent OAuth authentication
+- Full filesystem access
+- Any programming language/runtime
+- Existing Docker images
+
+This is perfect for integrating with Claude Max since the OAuth tokens can't be used directly with the Messages API.
+
+## Alternatives Considered
+
+| Approach | Issue |
+|----------|-------|
+| Direct OAuth API calls | OAuth tokens don't work with `/v1/messages` endpoint |
+| AI Gateway with API key | Requires purchasing Anthropic API credits separately |
+| Local proxy | Must keep computer running 24/7 |
+| VPS deployment | More expensive and complex |
+| **Cloudflare Containers** | ✅ Serverless, cost-effective, uses Claude Max |
+
+## Security
+
+- OAuth credentials stored as **encrypted Cloudflare secrets**
+- Containers are **isolated** and managed by Cloudflare
+- Add `PROXY_API_KEY` secret to require authentication for your proxy
+- Credentials never exposed in logs or code
+
+## Contributing
+
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
+
+## Support
+
+- Issues: [GitHub Issues](https://github.com/rynfar/opencode-claude-max-proxy/issues)
+- Discussions: [GitHub Discussions](https://github.com/rynfar/opencode-claude-max-proxy/discussions)
 
 ## License
 
@@ -202,4 +296,6 @@ MIT
 
 ## Credits
 
-Built with the [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) by Anthropic.
+- Built with [Cloudflare Containers](https://developers.cloudflare.com/containers/)
+- Uses [@anthropic-ai/sdk](https://www.npmjs.com/package/@anthropic-ai/sdk)
+- Powered by [Claude Max](https://claude.ai)

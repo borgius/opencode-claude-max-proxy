@@ -1,0 +1,26 @@
+name = "opencode-claude-proxy"
+main = "src/worker.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Non-secret configuration (override with secrets for sensitive values)
+
+# Secrets (set via `wrangler secret put`):
+# - CLAUDE_OAUTH_CREDS (JSON string with OAuth credentials)
+# - PROXY_API_KEY (optional auth for proxy)
+
+# Container configuration
+[[containers]]
+max_instances = 5
+class_name = "ClaudeContainer"
+image = "./Dockerfile"
+instance_type = "standard-2"  # 1 vCPU, 6 GiB memory, 12 GB disk
+
+[[durable_objects.bindings]]
+name = "CLAUDE_CONTAINER"
+class_name = "ClaudeContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ClaudeContainer"]
