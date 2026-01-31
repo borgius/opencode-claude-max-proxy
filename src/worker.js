@@ -52,26 +52,23 @@ export default {
   }
 };
 
-// Extend Container class with defaultPort
+// Extend Container class
 export class ClaudeContainer extends Container {
   // Set the default port that the container listens on
   defaultPort = 8080;
 
-  // Override containerFetch to forward requests to the container
-  async containerFetch(request) {
-    try {
-      // Get OAuth creds from header
-      const oauthCreds = request.headers.get('X-OAuth-Creds') || '';
+  // Environment variables passed to container
+  envVars = {};
 
-      // Start container with environment if not running
-      if (!this.running()) {
-        await this.start({
-          env: {
-            CLAUDE_OAUTH_CREDS: oauthCreds,
-            PORT: '8080'
-          }
-        });
-      }
+  // Override fetch to pass OAuth creds to container as env var
+  async fetch(request) {
+    try {
+      // Get OAuth creds from header and set as env var for container
+      const oauthCreds = request.headers.get('X-OAuth-Creds') || '';
+      this.envVars = {
+        CLAUDE_OAUTH_CREDS: oauthCreds,
+        PORT: '8080'
+      };
 
       // Build the container URL
       const url = new URL(request.url);
@@ -87,8 +84,8 @@ export class ClaudeContainer extends Container {
         body = await request.text();
       }
 
-      // Use fetch to send request to container
-      return await fetch(containerPath, {
+      // Use containerFetch to forward to container
+      return await this.containerFetch(containerPath, {
         method: request.method,
         headers: forwardHeaders,
         body: body,
@@ -102,5 +99,17 @@ export class ClaudeContainer extends Container {
         headers: { 'Content-Type': 'application/json' }
       });
     }
+  }
+
+  onStart() {
+    console.log('Container started');
+  }
+
+  onStop() {
+    console.log('Container stopped');
+  }
+
+  onError(error) {
+    console.error('Container error:', error);
   }
 }
