@@ -20,7 +20,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.27",
     "@cloudflare/workers-types": "^4.20241230.0",
     "typescript": "^5.8.2",
-    "wrangler": "^3.99.0"
+    "wrangler": "^4.61.1"
   },
   "keywords": [
     "opencode",
