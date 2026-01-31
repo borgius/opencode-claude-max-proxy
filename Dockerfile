@@ -17,4 +17,4 @@ COPY src ./src
 # Expose port for container communication
 EXPOSE 8080
 
-CMD ["node", "src/container-server.js"]
+CMD ["node", "src/container-server.cjs"]

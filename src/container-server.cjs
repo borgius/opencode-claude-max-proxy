@@ -1,5 +1,5 @@
-// Simple HTTP server to test container connectivity
-import http from 'http';
+// Simple HTTP server using CommonJS syntax
+const http = require('http');
 
 console.log('Starting container server...');
 console.log('Node version:', process.version);
@@ -11,7 +11,6 @@ const HOST = '0.0.0.0';
 const server = http.createServer((req, res) => {
   console.log(`Request: ${req.method} ${req.url}`);
 
-  // Health check - respond to everything for now
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
     status: 'healthy',
