@@ -1,5 +1,5 @@
-const http = require('http');
-const Anthropic = require('@anthropic-ai/sdk').default;
+const http = require('node:http');
+const https = require('node:https');
 
 const PORT = process.env.PORT || 8080;
 const HOST = '0.0.0.0';
@@ -10,6 +10,7 @@ console.log('Node version:', process.version);
 // Parse OAuth credentials safely - handles nested structure
 let oauthCreds = {};
 let accessToken = null;
+let refreshToken = null;
 try {
   const credsStr = process.env.CLAUDE_OAUTH_CREDS;
   if (credsStr) {
@@ -18,10 +19,12 @@ try {
     if (parsed.claudeAiOauth) {
       oauthCreds = parsed.claudeAiOauth;
       accessToken = oauthCreds.accessToken;
+      refreshToken = oauthCreds.refreshToken;
     } else if (parsed.accessToken) {
       // Direct structure: {accessToken: ...}
       oauthCreds = parsed;
       accessToken = parsed.accessToken;
+      refreshToken = parsed.refreshToken;
     }
     console.log('OAuth credentials loaded, subscription:', oauthCreds.subscriptionType);
   } else {
@@ -31,15 +34,40 @@ try {
   console.error('Failed to parse CLAUDE_OAUTH_CREDS:', e.message);
 }
 
-// Create Anthropic client with OAuth token
-let anthropic = null;
-if (accessToken) {
-  anthropic = new Anthropic({
-    apiKey: accessToken,
+// Make API request with Bearer auth (OAuth tokens need Bearer, not x-api-key)
+async function makeAnthropicRequest(token, requestData, isStreaming) {
+  return new Promise((resolve, reject) => {
+    const postData = JSON.stringify(requestData);
+
+    const options = {
+      hostname: 'api.anthropic.com',
+      port: 443,
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(postData),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      if (isStreaming) {
+        resolve(res);
+      } else {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          resolve({ statusCode: res.statusCode, data });
+        });
+      }
+    });
+
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
   });
-  console.log('Anthropic client initialized');
-} else {
-  console.warn('No accessToken found - Anthropic client not initialized');
 }
 
 const server = http.createServer(async (req, res) => {
@@ -50,7 +78,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'healthy',
-      hasCredentials: !!oauthCreds.accessToken,
+      hasCredentials: !!accessToken,
       subscription: oauthCreds.subscriptionType || 'unknown',
       nodeVersion: process.version
     }));
@@ -70,35 +98,30 @@ const server = http.createServer(async (req, res) => {
         const requestData = JSON.parse(body);
 
         // Try to get credentials from header if not in env
-        let client = anthropic;
-        if (!client) {
+        let token = accessToken;
+        if (!token) {
           const headerCreds = req.headers['x-oauth-creds'];
           if (headerCreds) {
             try {
               const parsed = JSON.parse(headerCreds);
-              // Handle nested structure
-              let token = null;
               if (parsed.claudeAiOauth?.accessToken) {
                 token = parsed.claudeAiOauth.accessToken;
               } else if (parsed.accessToken) {
                 token = parsed.accessToken;
               }
-              if (token) {
-                client = new Anthropic({ apiKey: token });
-                console.log('Using credentials from header');
-              }
+              console.log('Using credentials from header');
             } catch (e) {
               console.error('Failed to parse header credentials:', e.message);
             }
           }
         }
 
-        if (!client) {
+        if (!token) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             error: {
               type: 'authentication_error',
-              message: 'Anthropic client not initialized - missing credentials'
+              message: 'No OAuth token available'
             }
           }));
           return;
@@ -109,37 +132,39 @@ const server = http.createServer(async (req, res) => {
 
         if (isStreaming) {
           // Streaming response
-          const stream = await client.messages.create({
-            ...requestData,
-            stream: true,
-          });
+          const apiRes = await makeAnthropicRequest(token, { ...requestData, stream: true }, true);
 
-          res.writeHead(200, {
+          res.writeHead(apiRes.statusCode, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
           });
 
-          for await (const event of stream) {
-            res.write(`data: ${JSON.stringify(event)}\n\n`);
-          }
-          res.end();
-        } else {
-          // Non-streaming response
-          const message = await client.messages.create({
-            ...requestData,
-            stream: false,
+          apiRes.on('data', (chunk) => {
+            res.write(chunk);
           });
 
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(message));
+          apiRes.on('end', () => {
+            res.end();
+          });
+
+          apiRes.on('error', (err) => {
+            console.error('Stream error:', err);
+            res.end();
+          });
+        } else {
+          // Non-streaming response
+          const result = await makeAnthropicRequest(token, { ...requestData, stream: false }, false);
+
+          res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+          res.end(result.data);
         }
       } catch (error) {
         console.error('Error:', error);
-        res.writeHead(error.status || 500, { 'Content-Type': 'application/json' });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           error: {
-            type: error.type || 'api_error',
+            type: 'api_error',
             message: error.message
           }
         }));
