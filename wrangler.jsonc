@@ -6,14 +6,13 @@
   "compatibility_flags": ["nodejs_compat"],
 
   // Container configuration
-  "containers": [
-    {
-      "class_name": "ClaudeContainer",
+  "containers": {
+    "ClaudeContainer": {
       "image": "./Dockerfile",
       "instance_type": "standard-2",
       "max_instances": 5
     }
-  ],
+  },
 
   // Durable Objects
   "durable_objects": {
