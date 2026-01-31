@@ -47,35 +47,15 @@ export class ClaudeContainer {
   constructor(ctx, env) {
     this.ctx = ctx;
     this.env = env;
-    this.initError = null;
-
-    // Check if container exists during construction
-    try {
-      this.hasContainer = !!ctx.container;
-    } catch (e) {
-      this.initError = e.message;
-    }
   }
 
   async fetch(request) {
-    // Return init error if any
-    if (this.initError) {
-      return new Response(JSON.stringify({
-        error: 'Constructor error',
-        initError: this.initError
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
     try {
       const container = this.ctx.container;
 
-      // Debug: return container state
+      // Debug endpoint
       if (request.url.includes('debug=1')) {
         return new Response(JSON.stringify({
-          hasContainer: this.hasContainer,
           containerRunning: container?.running,
           containerMethods: container ? Object.getOwnPropertyNames(Object.getPrototypeOf(container)) : []
         }, null, 2), {
@@ -87,11 +67,8 @@ export class ClaudeContainer {
       // Get OAuth creds from header
       const oauthCreds = request.headers.get('X-OAuth-Creds') || '';
 
-      // Debug: Check container state
-      const isRunning = container.running;
-
-      // Start container if needed
-      if (!isRunning) {
+      // Start container if not running
+      if (!container.running) {
         container.start({
           env: {
             CLAUDE_OAUTH_CREDS: oauthCreds,
@@ -99,20 +76,25 @@ export class ClaudeContainer {
           }
         });
 
-        // Wait for container to be ready
-        for (let i = 0; i < 60; i++) {
+        // Short wait (max 10 seconds to avoid timeout)
+        for (let i = 0; i < 10; i++) {
           if (container.running) break;
           await new Promise(r => setTimeout(r, 1000));
         }
       }
 
-      // Check if running now
+      // If still not running, return retry response
       if (!container.running) {
         return new Response(JSON.stringify({
-          error: 'Container not running after 60s wait'
+          error: 'Container is starting, please retry in a few seconds',
+          status: 'starting',
+          retryAfter: 5
         }), {
           status: 503,
-          headers: { 'Content-Type': 'application/json' }
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': '5'
+          }
         });
       }
 
@@ -140,7 +122,6 @@ export class ClaudeContainer {
       return new Response(JSON.stringify({
         error: error.message,
         stack: error.stack,
-        containerExists: !!this.ctx?.container,
         containerRunning: this.ctx?.container?.running
       }), {
         status: 500,
