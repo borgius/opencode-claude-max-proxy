@@ -34,33 +34,64 @@ export class ClaudeContainer {
   constructor(ctx, env) {
     this.ctx = ctx;
     this.env = env;
-
-    // Start container on first request
-    this.ctx.blockConcurrencyWhile(async () => {
-      this.ctx.container.start({
-        env: {
-          CLAUDE_OAUTH_CREDS: env.CLAUDE_OAUTH_CREDS,
-          PORT: '8080'
-        }
-      });
-    });
+    this.containerStarted = false;
   }
 
   async fetch(request) {
-    // Get TCP port to container
-    const port = this.ctx.container.getTcpPort(8080);
+    try {
+      // Start container if not started
+      if (!this.containerStarted) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          if (!this.ctx.container.running) {
+            this.ctx.container.start({
+              env: {
+                CLAUDE_OAUTH_CREDS: this.env.CLAUDE_OAUTH_CREDS || '',
+                PORT: '8080'
+              }
+            });
+          }
+          this.containerStarted = true;
+        });
+      }
 
-    // Forward request to container
-    const containerUrl = new URL(request.url);
-    containerUrl.protocol = 'http:';
-    containerUrl.host = port.host;
+      // Wait for container to be ready (simple retry)
+      let retries = 30;
+      while (!this.ctx.container.running && retries > 0) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries--;
+      }
 
-    const containerRequest = new Request(containerUrl, {
-      method: request.method,
-      headers: request.headers,
-      body: request.body,
-    });
+      if (!this.ctx.container.running) {
+        return new Response(JSON.stringify({ error: 'Container failed to start' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
 
-    return await fetch(containerRequest);
+      // Get TCP port to container
+      const port = this.ctx.container.getTcpPort(8080);
+
+      // Forward request to container
+      const containerUrl = new URL(request.url);
+      containerUrl.protocol = 'http:';
+      containerUrl.host = port.host;
+
+      const containerRequest = new Request(containerUrl, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body,
+      });
+
+      return await fetch(containerRequest);
+    } catch (error) {
+      return new Response(JSON.stringify({
+        error: error.message,
+        stack: error.stack,
+        containerRunning: this.ctx.container?.running
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
   }
 }
