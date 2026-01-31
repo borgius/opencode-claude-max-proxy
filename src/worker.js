@@ -99,7 +99,18 @@ export class ClaudeContainer {
       }
 
       // Get TCP socket to container
-      const socket = container.getTcpPort(8080);
+      let socket;
+      try {
+        socket = container.getTcpPort(8080);
+      } catch (e) {
+        return new Response(JSON.stringify({
+          error: 'getTcpPort failed',
+          message: e.message
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
 
       // Build URL for container
       const containerUrl = new URL(request.url);
@@ -110,13 +121,31 @@ export class ClaudeContainer {
       const forwardHeaders = new Headers(request.headers);
       forwardHeaders.delete('X-OAuth-Creds');
 
+      // Clone body for POST requests
+      let body = null;
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        body = await request.text();
+      }
+
       const containerRequest = new Request(containerUrl, {
         method: request.method,
         headers: forwardHeaders,
-        body: request.body,
+        body: body,
       });
 
-      return await fetch(containerRequest);
+      try {
+        return await fetch(containerRequest);
+      } catch (e) {
+        return new Response(JSON.stringify({
+          error: 'Container fetch failed',
+          message: e.message,
+          containerUrl: containerUrl.toString(),
+          socketHost: socket.host
+        }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
 
     } catch (error) {
       return new Response(JSON.stringify({
