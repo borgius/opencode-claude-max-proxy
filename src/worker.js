@@ -29,7 +29,10 @@ export default {
         // Forward request to container
         return await stub.fetch(modifiedRequest);
       } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
+        return new Response(JSON.stringify({
+          error: error.message,
+          stack: error.stack
+        }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
         });
@@ -47,14 +50,17 @@ export class ClaudeContainer {
   }
 
   async fetch(request) {
-    const container = this.ctx.container;
-
     try {
-      // Get OAuth creds from header (passed from Worker)
+      const container = this.ctx.container;
+
+      // Get OAuth creds from header
       const oauthCreds = request.headers.get('X-OAuth-Creds') || '';
 
-      // Start container if not running
-      if (!container.running) {
+      // Debug: Check container state
+      const isRunning = container.running;
+
+      // Start container if needed
+      if (!isRunning) {
         container.start({
           env: {
             CLAUDE_OAUTH_CREDS: oauthCreds,
@@ -62,33 +68,34 @@ export class ClaudeContainer {
           }
         });
 
-        // Wait for container to be ready (up to 60 seconds)
-        let attempts = 60;
-        while (!container.running && attempts > 0) {
+        // Wait for container to be ready
+        for (let i = 0; i < 60; i++) {
+          if (container.running) break;
           await new Promise(r => setTimeout(r, 1000));
-          attempts--;
-        }
-
-        if (!container.running) {
-          return new Response(JSON.stringify({
-            error: 'Container failed to start within 60 seconds'
-          }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' }
-          });
         }
       }
 
-      // Get TCP port to container
-      const port = container.getTcpPort(8080);
+      // Check if running now
+      if (!container.running) {
+        return new Response(JSON.stringify({
+          error: 'Container not running after 60s wait'
+        }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
 
-      // Forward request to container (remove internal header)
-      const forwardHeaders = new Headers(request.headers);
-      forwardHeaders.delete('X-OAuth-Creds');
+      // Get TCP socket to container
+      const socket = container.getTcpPort(8080);
 
+      // Build URL for container
       const containerUrl = new URL(request.url);
       containerUrl.protocol = 'http:';
-      containerUrl.host = port.host;
+      containerUrl.host = socket.host;
+
+      // Forward request (remove internal header)
+      const forwardHeaders = new Headers(request.headers);
+      forwardHeaders.delete('X-OAuth-Creds');
 
       const containerRequest = new Request(containerUrl, {
         method: request.method,
@@ -97,11 +104,13 @@ export class ClaudeContainer {
       });
 
       return await fetch(containerRequest);
+
     } catch (error) {
       return new Response(JSON.stringify({
         error: error.message,
         stack: error.stack,
-        containerRunning: container?.running
+        containerExists: !!this.ctx?.container,
+        containerRunning: this.ctx?.container?.running
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
