@@ -74,6 +74,22 @@ const server = http.createServer(async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-  console.log(`Container server listening on port ${PORT}`);
+const HOST = '0.0.0.0';
+
+// Bind to all interfaces explicitly
+server.listen(PORT, HOST, () => {
+  console.log(`Container server listening on ${HOST}:${PORT}`);
+});
+
+// Handle errors
+server.on('error', (err) => {
+  console.error('Server error:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
 });
