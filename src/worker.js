@@ -25,7 +25,6 @@ export default {
         // Clone request and add OAuth creds header (secrets not accessible in DO)
         const headers = new Headers(request.headers);
         headers.set('X-OAuth-Creds', env.CLAUDE_OAUTH_CREDS || '');
-        headers.set('X-Original-Body', bodyText ? 'true' : 'false');
 
         const modifiedRequest = new Request(request.url, {
           method: request.method,
@@ -72,40 +71,6 @@ export class ClaudeContainer {
         });
       }
 
-      // Test container health endpoint
-      if (request.url.includes('test-container=1')) {
-        if (!container.running) {
-          return new Response(JSON.stringify({ error: 'Container not running' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-
-        try {
-          const socket = container.getTcpPort(8080);
-          const healthUrl = `http://${socket.host}/health`;
-
-          const healthResponse = await fetch(healthUrl);
-          const healthData = await healthResponse.text();
-
-          return new Response(JSON.stringify({
-            containerHealth: healthData,
-            socketHost: socket.host
-          }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({
-            error: 'Container health check failed',
-            message: e.message
-          }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      }
-
       // Get OAuth creds from header
       const oauthCreds = request.headers.get('X-OAuth-Creds') || '';
 
@@ -140,54 +105,31 @@ export class ClaudeContainer {
         });
       }
 
-      // Get TCP socket to container
-      let socket;
-      try {
-        socket = container.getTcpPort(8080);
-      } catch (e) {
-        return new Response(JSON.stringify({
-          error: 'getTcpPort failed',
-          message: e.message
-        }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
+      // Get TCP port to container - this returns a TcpPort object with its own fetch() method
+      const port = container.getTcpPort(8080);
 
-      // Build URL for container
-      const containerUrl = new URL(request.url);
-      containerUrl.protocol = 'http:';
-      containerUrl.host = socket.host;
+      // Build the URL path for the container
+      const url = new URL(request.url);
+      const containerPath = `http://container${url.pathname}${url.search}`;
 
-      // Forward request (remove internal header)
+      // Forward request using port.fetch() - remove internal header
       const forwardHeaders = new Headers(request.headers);
       forwardHeaders.delete('X-OAuth-Creds');
 
-      // Clone body for POST requests
+      // Read body for non-GET requests
       let body = null;
       if (request.method !== 'GET' && request.method !== 'HEAD') {
         body = await request.text();
       }
 
-      const containerRequest = new Request(containerUrl, {
+      // Use port.fetch() to send request to container
+      const containerResponse = await port.fetch(containerPath, {
         method: request.method,
         headers: forwardHeaders,
         body: body,
       });
 
-      try {
-        return await fetch(containerRequest);
-      } catch (e) {
-        return new Response(JSON.stringify({
-          error: 'Container fetch failed',
-          message: e.message,
-          containerUrl: containerUrl.toString(),
-          socketHost: socket.host
-        }), {
-          status: 502,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
+      return containerResponse;
 
     } catch (error) {
       return new Response(JSON.stringify({
