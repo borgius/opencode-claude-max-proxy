@@ -16,14 +16,21 @@ export default {
         const id = env.CLAUDE_CONTAINER.idFromName('default');
         const stub = env.CLAUDE_CONTAINER.get(id);
 
+        // Read body first (can only be consumed once)
+        let bodyText = null;
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          bodyText = await request.text();
+        }
+
         // Clone request and add OAuth creds header (secrets not accessible in DO)
         const headers = new Headers(request.headers);
         headers.set('X-OAuth-Creds', env.CLAUDE_OAUTH_CREDS || '');
+        headers.set('X-Original-Body', bodyText ? 'true' : 'false');
 
         const modifiedRequest = new Request(request.url, {
           method: request.method,
           headers,
-          body: request.body,
+          body: bodyText,
         });
 
         // Forward request to container
@@ -31,7 +38,8 @@ export default {
       } catch (error) {
         return new Response(JSON.stringify({
           error: error.message,
-          stack: error.stack
+          stack: error.stack,
+          location: 'main worker'
         }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
@@ -53,7 +61,7 @@ export class ClaudeContainer {
     try {
       const container = this.ctx.container;
 
-      // Debug endpoint
+      // Debug endpoint - container state
       if (request.url.includes('debug=1')) {
         return new Response(JSON.stringify({
           containerRunning: container?.running,
@@ -62,6 +70,40 @@ export class ClaudeContainer {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
+      }
+
+      // Test container health endpoint
+      if (request.url.includes('test-container=1')) {
+        if (!container.running) {
+          return new Response(JSON.stringify({ error: 'Container not running' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        try {
+          const socket = container.getTcpPort(8080);
+          const healthUrl = `http://${socket.host}/health`;
+
+          const healthResponse = await fetch(healthUrl);
+          const healthData = await healthResponse.text();
+
+          return new Response(JSON.stringify({
+            containerHealth: healthData,
+            socketHost: socket.host
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({
+            error: 'Container health check failed',
+            message: e.message
+          }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
       }
 
       // Get OAuth creds from header
