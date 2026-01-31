@@ -47,11 +47,42 @@ export class ClaudeContainer {
   constructor(ctx, env) {
     this.ctx = ctx;
     this.env = env;
+    this.initError = null;
+
+    // Check if container exists during construction
+    try {
+      this.hasContainer = !!ctx.container;
+    } catch (e) {
+      this.initError = e.message;
+    }
   }
 
   async fetch(request) {
+    // Return init error if any
+    if (this.initError) {
+      return new Response(JSON.stringify({
+        error: 'Constructor error',
+        initError: this.initError
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     try {
       const container = this.ctx.container;
+
+      // Debug: return container state
+      if (request.url.includes('debug=1')) {
+        return new Response(JSON.stringify({
+          hasContainer: this.hasContainer,
+          containerRunning: container?.running,
+          containerMethods: container ? Object.getOwnPropertyNames(Object.getPrototypeOf(container)) : []
+        }, null, 2), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
 
       // Get OAuth creds from header
       const oauthCreds = request.headers.get('X-OAuth-Creds') || '';
