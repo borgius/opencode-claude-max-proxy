@@ -7,13 +7,23 @@ const HOST = '0.0.0.0';
 console.log(`Starting container server on ${HOST}:${PORT}`);
 console.log('Node version:', process.version);
 
-// Parse OAuth credentials safely
+// Parse OAuth credentials safely - handles nested structure
 let oauthCreds = {};
+let accessToken = null;
 try {
   const credsStr = process.env.CLAUDE_OAUTH_CREDS;
   if (credsStr) {
-    oauthCreds = JSON.parse(credsStr);
-    console.log('OAuth credentials loaded successfully');
+    const parsed = JSON.parse(credsStr);
+    // Handle nested structure: {claudeAiOauth: {accessToken: ...}}
+    if (parsed.claudeAiOauth) {
+      oauthCreds = parsed.claudeAiOauth;
+      accessToken = oauthCreds.accessToken;
+    } else if (parsed.accessToken) {
+      // Direct structure: {accessToken: ...}
+      oauthCreds = parsed;
+      accessToken = parsed.accessToken;
+    }
+    console.log('OAuth credentials loaded, subscription:', oauthCreds.subscriptionType);
   } else {
     console.warn('No CLAUDE_OAUTH_CREDS environment variable');
   }
@@ -23,9 +33,9 @@ try {
 
 // Create Anthropic client with OAuth token
 let anthropic = null;
-if (oauthCreds.accessToken) {
+if (accessToken) {
   anthropic = new Anthropic({
-    apiKey: oauthCreds.accessToken,
+    apiKey: accessToken,
   });
   console.log('Anthropic client initialized');
 } else {
@@ -65,9 +75,16 @@ const server = http.createServer(async (req, res) => {
           const headerCreds = req.headers['x-oauth-creds'];
           if (headerCreds) {
             try {
-              const creds = JSON.parse(headerCreds);
-              if (creds.accessToken) {
-                client = new Anthropic({ apiKey: creds.accessToken });
+              const parsed = JSON.parse(headerCreds);
+              // Handle nested structure
+              let token = null;
+              if (parsed.claudeAiOauth?.accessToken) {
+                token = parsed.claudeAiOauth.accessToken;
+              } else if (parsed.accessToken) {
+                token = parsed.accessToken;
+              }
+              if (token) {
+                client = new Anthropic({ apiKey: token });
                 console.log('Using credentials from header');
               }
             } catch (e) {
