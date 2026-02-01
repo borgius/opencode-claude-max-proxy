@@ -63,19 +63,35 @@ This version features a complete rewrite with:
 | `seed` | ⚠️ Passthrough | For compatibility |
 | `user` | ⚠️ Passthrough | For compatibility |
 
+## Supported Claude Code Models
+
+Claude Code only supports these three models:
+
+| Model ID | Description |
+|----------|-------------|
+| `claude-opus-4-5-20251101` | Claude Opus 4.5 - Most capable |
+| `claude-sonnet-4-5-20250929` | Claude Sonnet 4.5 - Balanced (default) |
+| `claude-haiku-4-5-20251001` | Claude Haiku 4.5 - Fastest |
+
 ## Model Mapping
 
-| OpenAI Model | Claude Model |
-|--------------|--------------|
-| `gpt-4o` | `claude-sonnet-4-20250514` |
-| `gpt-4o-mini` | `claude-3-5-haiku-20241022` |
-| `gpt-4-turbo` | `claude-sonnet-4-20250514` |
-| `gpt-4` | `claude-sonnet-4-20250514` |
-| `gpt-3.5-turbo` | `claude-3-5-haiku-20241022` |
-| `o1` | `claude-3-5-sonnet-20241022` |
-| `o1-mini` | `claude-3-5-haiku-20241022` |
-| `o1-preview` | `claude-3-5-sonnet-20241022` |
-| `claude-*` | Direct passthrough |
+All model requests are automatically mapped to supported Claude Code models.
+Unknown models default to Sonnet.
+
+| Request Model | Maps To |
+|---------------|---------|
+| `gpt-4o` | `claude-sonnet-4-5-20250929` |
+| `gpt-4o-mini` | `claude-haiku-4-5-20251001` |
+| `gpt-4-turbo` | `claude-sonnet-4-5-20250929` |
+| `gpt-4` | `claude-opus-4-5-20251101` |
+| `gpt-3.5-turbo` | `claude-haiku-4-5-20251001` |
+| `o1` | `claude-opus-4-5-20251101` |
+| `o1-mini` | `claude-haiku-4-5-20251001` |
+| `o1-preview` | `claude-opus-4-5-20251101` |
+| `claude-3-5-sonnet-*` | `claude-sonnet-4-5-20250929` |
+| `claude-3-5-haiku-*` | `claude-haiku-4-5-20251001` |
+| `claude-3-opus-*` | `claude-opus-4-5-20251101` |
+| Unknown models | `claude-sonnet-4-5-20250929` |
 
 ## Project Structure
 

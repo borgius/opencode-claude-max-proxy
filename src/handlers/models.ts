@@ -1,6 +1,11 @@
 /**
  * Models API Handler
  * OpenAI-compatible /v1/models endpoint
+ *
+ * Claude Code only supports these models:
+ * - claude-opus-4-5-20251101 (Claude Opus 4.5)
+ * - claude-sonnet-4-5-20250929 (Claude Sonnet 4.5)
+ * - claude-haiku-4-5-20251001 (Claude Haiku 4.5)
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -8,94 +13,137 @@ import type { OpenAIModel, OpenAIModelsResponse } from '../core/types.js';
 import { logger } from '../core/logger.js';
 
 /**
- * Available Claude models via Claude Max subscription
+ * Supported Claude Code models
+ */
+export const CLAUDE_MODELS = {
+  OPUS: 'claude-opus-4-5-20251101',
+  SONNET: 'claude-sonnet-4-5-20250929',
+  HAIKU: 'claude-haiku-4-5-20251001',
+} as const;
+
+/**
+ * Default model when not recognized
+ */
+export const DEFAULT_MODEL = CLAUDE_MODELS.SONNET;
+
+/**
+ * Available Claude models via Claude Code
  */
 const AVAILABLE_MODELS: OpenAIModel[] = [
-  // Claude 4 Series (Latest)
+  // Claude 4.5 Series (Supported by Claude Code)
   {
-    id: 'claude-opus-4-20250514',
+    id: CLAUDE_MODELS.OPUS,
     object: 'model',
-    created: 1715731200, // May 2025
+    created: 1730419200, // Nov 2024
     owned_by: 'anthropic',
   },
   {
-    id: 'claude-sonnet-4-20250514',
+    id: CLAUDE_MODELS.SONNET,
     object: 'model',
-    created: 1715731200,
-    owned_by: 'anthropic',
-  },
-  // Claude 3.5 Series
-  {
-    id: 'claude-3-5-sonnet-20241022',
-    object: 'model',
-    created: 1729555200,
+    created: 1727568000, // Sept 2024
     owned_by: 'anthropic',
   },
   {
-    id: 'claude-3-5-haiku-20241022',
+    id: CLAUDE_MODELS.HAIKU,
     object: 'model',
-    created: 1729555200,
+    created: 1727654400, // Oct 2024
     owned_by: 'anthropic',
   },
-  // Claude 3 Series
+  // OpenAI-style aliases (for compatibility)
   {
-    id: 'claude-3-opus-20240229',
+    id: 'gpt-4o',
     object: 'model',
-    created: 1709164800,
-    owned_by: 'anthropic',
-  },
-  {
-    id: 'claude-3-sonnet-20240229',
-    object: 'model',
-    created: 1709164800,
+    created: 1727568000,
     owned_by: 'anthropic',
   },
   {
-    id: 'claude-3-haiku-20240307',
+    id: 'gpt-4o-mini',
     object: 'model',
-    created: 1709769600,
-    owned_by: 'anthropic',
-  },
-  // Aliases
-  {
-    id: 'claude-3-5-sonnet-latest',
-    object: 'model',
-    created: 1729555200,
+    created: 1727654400,
     owned_by: 'anthropic',
   },
   {
-    id: 'claude-3-5-haiku-latest',
+    id: 'gpt-4-turbo',
     object: 'model',
-    created: 1729555200,
+    created: 1727568000,
     owned_by: 'anthropic',
   },
   {
-    id: 'claude-3-opus-latest',
+    id: 'gpt-4',
     object: 'model',
-    created: 1709164800,
+    created: 1730419200,
+    owned_by: 'anthropic',
+  },
+  {
+    id: 'gpt-3.5-turbo',
+    object: 'model',
+    created: 1727654400,
+    owned_by: 'anthropic',
+  },
+  {
+    id: 'o1',
+    object: 'model',
+    created: 1730419200,
+    owned_by: 'anthropic',
+  },
+  {
+    id: 'o1-mini',
+    object: 'model',
+    created: 1727654400,
+    owned_by: 'anthropic',
+  },
+  {
+    id: 'o1-preview',
+    object: 'model',
+    created: 1730419200,
     owned_by: 'anthropic',
   },
 ];
 
 /**
- * Model ID aliases for mapping
+ * Model ID aliases - maps any model to supported Claude Code models
  */
 export const MODEL_ALIASES: Record<string, string> = {
-  // Short aliases
-  'claude-4': 'claude-sonnet-4-20250514',
-  'claude-4-opus': 'claude-opus-4-20250514',
-  'claude-4-sonnet': 'claude-sonnet-4-20250514',
-  'claude-3.5-sonnet': 'claude-3-5-sonnet-20241022',
-  'claude-3.5-haiku': 'claude-3-5-haiku-20241022',
-  'claude-3-opus': 'claude-3-opus-20240229',
-  'claude-3-sonnet': 'claude-3-sonnet-20240229',
-  'claude-3-haiku': 'claude-3-haiku-20240307',
+  // OpenAI models -> Claude
+  'gpt-4o': CLAUDE_MODELS.SONNET,
+  'gpt-4o-mini': CLAUDE_MODELS.HAIKU,
+  'gpt-4-turbo': CLAUDE_MODELS.SONNET,
+  'gpt-4': CLAUDE_MODELS.OPUS,
+  'gpt-3.5-turbo': CLAUDE_MODELS.HAIKU,
+  'o1': CLAUDE_MODELS.OPUS,
+  'o1-mini': CLAUDE_MODELS.HAIKU,
+  'o1-preview': CLAUDE_MODELS.OPUS,
 
-  // OpenAI-style aliases (for compatibility)
-  'gpt-4o': 'claude-sonnet-4-20250514',
-  'gpt-4': 'claude-3-opus-20240229',
-  'gpt-4-turbo': 'claude-3-5-sonnet-20241022',
-  'gpt-3.5-turbo': 'claude-3-haiku-20240307',
+  // Claude model aliases
+  'claude-4': CLAUDE_MODELS.SONNET,
+  'claude-4-opus': CLAUDE_MODELS.OPUS,
+  'claude-4-sonnet': CLAUDE_MODELS.SONNET,
+  'claude-4.5': CLAUDE_MODELS.SONNET,
+  'claude-4.5-opus': CLAUDE_MODELS.OPUS,
+  'claude-4.5-sonnet': CLAUDE_MODELS.SONNET,
+  'claude-4.5-haiku': CLAUDE_MODELS.HAIKU,
+
+  // Old Claude models -> map to new ones
+  'claude-opus-4-20250514': CLAUDE_MODELS.OPUS,
+  'claude-sonnet-4-20250514': CLAUDE_MODELS.SONNET,
+  'claude-3-5-sonnet-20241022': CLAUDE_MODELS.SONNET,
+  'claude-3-5-sonnet-latest': CLAUDE_MODELS.SONNET,
+  'claude-3-5-haiku-20241022': CLAUDE_MODELS.HAIKU,
+  'claude-3-5-haiku-latest': CLAUDE_MODELS.HAIKU,
+  'claude-3-opus-20240229': CLAUDE_MODELS.OPUS,
+  'claude-3-opus-latest': CLAUDE_MODELS.OPUS,
+  'claude-3-sonnet-20240229': CLAUDE_MODELS.SONNET,
+  'claude-3-haiku-20240307': CLAUDE_MODELS.HAIKU,
+  'claude-3.5-sonnet': CLAUDE_MODELS.SONNET,
+  'claude-3.5-haiku': CLAUDE_MODELS.HAIKU,
+  'claude-3-opus': CLAUDE_MODELS.OPUS,
+  'claude-3-sonnet': CLAUDE_MODELS.SONNET,
+  'claude-3-haiku': CLAUDE_MODELS.HAIKU,
+
+  // Direct mappings (passthrough)
+  [CLAUDE_MODELS.OPUS]: CLAUDE_MODELS.OPUS,
+  [CLAUDE_MODELS.SONNET]: CLAUDE_MODELS.SONNET,
+  [CLAUDE_MODELS.HAIKU]: CLAUDE_MODELS.HAIKU,
 };
 
 /**
@@ -110,26 +158,46 @@ export function getModels(): OpenAIModelsResponse {
 
 /**
  * Get a specific model by ID
+ * For aliases (like gpt-4o), returns the resolved Claude model
  */
 export function getModel(modelId: string): OpenAIModel | null {
-  // Check direct match
-  const model = AVAILABLE_MODELS.find(m => m.id === modelId);
-  if (model) return model;
-
-  // Check aliases
+  // Check aliases first - return the resolved Claude model
   const aliasedId = MODEL_ALIASES[modelId];
   if (aliasedId) {
     return AVAILABLE_MODELS.find(m => m.id === aliasedId) || null;
   }
 
+  // Check direct match for non-aliased models
+  const model = AVAILABLE_MODELS.find(m => m.id === modelId);
+  if (model) return model;
+
   return null;
 }
 
 /**
- * Resolve model ID (handle aliases)
+ * Resolve model ID to a supported Claude Code model
+ * Returns DEFAULT_MODEL (Sonnet) if model is not recognized
  */
 export function resolveModelId(modelId: string): string {
-  return MODEL_ALIASES[modelId] || modelId;
+  // Check if it's a direct match to a supported model
+  if (modelId === CLAUDE_MODELS.OPUS ||
+      modelId === CLAUDE_MODELS.SONNET ||
+      modelId === CLAUDE_MODELS.HAIKU) {
+    return modelId;
+  }
+
+  // Check aliases
+  const aliasedId = MODEL_ALIASES[modelId];
+  if (aliasedId) {
+    return aliasedId;
+  }
+
+  // Default to Sonnet for unknown models
+  logger.warn('Unknown model, defaulting to Sonnet', {
+    requestedModel: modelId,
+    resolvedModel: DEFAULT_MODEL
+  });
+  return DEFAULT_MODEL;
 }
 
 /**
@@ -185,4 +253,6 @@ export default {
   resolveModelId,
   MODEL_ALIASES,
   AVAILABLE_MODELS,
+  CLAUDE_MODELS,
+  DEFAULT_MODEL,
 };

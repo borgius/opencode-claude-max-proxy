@@ -11,6 +11,8 @@ import {
   getModel,
   resolveModelId,
   MODEL_ALIASES,
+  CLAUDE_MODELS,
+  DEFAULT_MODEL,
 } from '../src/handlers/models.js';
 
 describe('Models Endpoints', () => {
@@ -35,7 +37,7 @@ describe('Models Endpoints', () => {
       expect(body.data.length).toBeGreaterThan(0);
     });
 
-    it('should include Claude 4 models', async () => {
+    it('should include Claude 4.5 models (supported by Claude Code)', async () => {
       const req = createMockRequest({ method: 'GET', url: '/v1/models' });
       const res = createMockResponse();
 
@@ -45,11 +47,12 @@ describe('Models Endpoints', () => {
       const body = JSON.parse(res._body);
       const modelIds = body.data.map((m: { id: string }) => m.id);
 
-      expect(modelIds).toContain('claude-opus-4-20250514');
-      expect(modelIds).toContain('claude-sonnet-4-20250514');
+      expect(modelIds).toContain(CLAUDE_MODELS.OPUS);
+      expect(modelIds).toContain(CLAUDE_MODELS.SONNET);
+      expect(modelIds).toContain(CLAUDE_MODELS.HAIKU);
     });
 
-    it('should include Claude 3.5 models', async () => {
+    it('should include OpenAI-style alias models', async () => {
       const req = createMockRequest({ method: 'GET', url: '/v1/models' });
       const res = createMockResponse();
 
@@ -59,8 +62,9 @@ describe('Models Endpoints', () => {
       const body = JSON.parse(res._body);
       const modelIds = body.data.map((m: { id: string }) => m.id);
 
-      expect(modelIds).toContain('claude-3-5-sonnet-20241022');
-      expect(modelIds).toContain('claude-3-5-haiku-20241022');
+      expect(modelIds).toContain('gpt-4o');
+      expect(modelIds).toContain('gpt-4o-mini');
+      expect(modelIds).toContain('gpt-4-turbo');
     });
 
     it('should return models with correct structure', async () => {
@@ -84,16 +88,16 @@ describe('Models Endpoints', () => {
 
   describe('GET /v1/models/:id', () => {
     it('should return specific model by ID', async () => {
-      const req = createMockRequest({ method: 'GET', url: '/v1/models/claude-sonnet-4-20250514' });
+      const req = createMockRequest({ method: 'GET', url: `/v1/models/${CLAUDE_MODELS.SONNET}` });
       const res = createMockResponse();
 
-      await handleGetModel(req, res, 'claude-sonnet-4-20250514', 'test-req-5');
+      await handleGetModel(req, res, CLAUDE_MODELS.SONNET, 'test-req-5');
       await waitForResponse(res);
 
       expect(res._statusCode).toBe(200);
 
       const body = JSON.parse(res._body);
-      expect(body.id).toBe('claude-sonnet-4-20250514');
+      expect(body.id).toBe(CLAUDE_MODELS.SONNET);
       expect(body.object).toBe('model');
       expect(body.owned_by).toBe('anthropic');
     });
@@ -123,8 +127,8 @@ describe('Models Endpoints', () => {
       expect(res._statusCode).toBe(200);
 
       const body = JSON.parse(res._body);
-      // gpt-4o should resolve to claude-sonnet-4
-      expect(body.id).toBe('claude-sonnet-4-20250514');
+      // gpt-4o should resolve to claude-sonnet-4.5
+      expect(body.id).toBe(CLAUDE_MODELS.SONNET);
     });
   });
 
@@ -140,10 +144,10 @@ describe('Models Endpoints', () => {
 
   describe('getModel', () => {
     it('should return model by exact ID', () => {
-      const model = getModel('claude-3-opus-20240229');
+      const model = getModel(CLAUDE_MODELS.OPUS);
 
       expect(model).not.toBeNull();
-      expect(model?.id).toBe('claude-3-opus-20240229');
+      expect(model?.id).toBe(CLAUDE_MODELS.OPUS);
     });
 
     it('should return null for unknown model', () => {
@@ -156,33 +160,62 @@ describe('Models Endpoints', () => {
       const model = getModel('claude-3.5-sonnet');
 
       expect(model).not.toBeNull();
-      expect(model?.id).toBe('claude-3-5-sonnet-20241022');
+      expect(model?.id).toBe(CLAUDE_MODELS.SONNET);
     });
   });
 
   describe('resolveModelId', () => {
-    it('should resolve known aliases', () => {
-      expect(resolveModelId('gpt-4o')).toBe('claude-sonnet-4-20250514');
-      expect(resolveModelId('gpt-4')).toBe('claude-3-opus-20240229');
-      expect(resolveModelId('gpt-3.5-turbo')).toBe('claude-3-haiku-20240307');
+    it('should resolve OpenAI aliases to Claude models', () => {
+      expect(resolveModelId('gpt-4o')).toBe(CLAUDE_MODELS.SONNET);
+      expect(resolveModelId('gpt-4o-mini')).toBe(CLAUDE_MODELS.HAIKU);
+      expect(resolveModelId('gpt-4')).toBe(CLAUDE_MODELS.OPUS);
+      expect(resolveModelId('gpt-3.5-turbo')).toBe(CLAUDE_MODELS.HAIKU);
+      expect(resolveModelId('o1')).toBe(CLAUDE_MODELS.OPUS);
+      expect(resolveModelId('o1-mini')).toBe(CLAUDE_MODELS.HAIKU);
     });
 
-    it('should pass through unknown model IDs', () => {
-      expect(resolveModelId('claude-sonnet-4-20250514')).toBe('claude-sonnet-4-20250514');
-      expect(resolveModelId('custom-model')).toBe('custom-model');
+    it('should pass through supported Claude models', () => {
+      expect(resolveModelId(CLAUDE_MODELS.OPUS)).toBe(CLAUDE_MODELS.OPUS);
+      expect(resolveModelId(CLAUDE_MODELS.SONNET)).toBe(CLAUDE_MODELS.SONNET);
+      expect(resolveModelId(CLAUDE_MODELS.HAIKU)).toBe(CLAUDE_MODELS.HAIKU);
+    });
+
+    it('should map old Claude models to new ones', () => {
+      expect(resolveModelId('claude-3-5-sonnet-20241022')).toBe(CLAUDE_MODELS.SONNET);
+      expect(resolveModelId('claude-3-5-haiku-20241022')).toBe(CLAUDE_MODELS.HAIKU);
+      expect(resolveModelId('claude-3-opus-20240229')).toBe(CLAUDE_MODELS.OPUS);
+    });
+
+    it('should default unknown models to Sonnet', () => {
+      expect(resolveModelId('custom-model')).toBe(DEFAULT_MODEL);
+      expect(resolveModelId('unknown-xyz')).toBe(DEFAULT_MODEL);
     });
   });
 
   describe('MODEL_ALIASES', () => {
     it('should have short aliases', () => {
-      expect(MODEL_ALIASES['claude-4']).toBeDefined();
-      expect(MODEL_ALIASES['claude-3.5-sonnet']).toBeDefined();
+      expect(MODEL_ALIASES['claude-4']).toBe(CLAUDE_MODELS.SONNET);
+      expect(MODEL_ALIASES['claude-4.5']).toBe(CLAUDE_MODELS.SONNET);
+      expect(MODEL_ALIASES['claude-4.5-opus']).toBe(CLAUDE_MODELS.OPUS);
     });
 
     it('should have OpenAI compatibility aliases', () => {
-      expect(MODEL_ALIASES['gpt-4o']).toBeDefined();
-      expect(MODEL_ALIASES['gpt-4']).toBeDefined();
-      expect(MODEL_ALIASES['gpt-4-turbo']).toBeDefined();
+      expect(MODEL_ALIASES['gpt-4o']).toBe(CLAUDE_MODELS.SONNET);
+      expect(MODEL_ALIASES['gpt-4']).toBe(CLAUDE_MODELS.OPUS);
+      expect(MODEL_ALIASES['gpt-4-turbo']).toBe(CLAUDE_MODELS.SONNET);
+      expect(MODEL_ALIASES['gpt-3.5-turbo']).toBe(CLAUDE_MODELS.HAIKU);
+    });
+  });
+
+  describe('CLAUDE_MODELS constants', () => {
+    it('should have correct model IDs', () => {
+      expect(CLAUDE_MODELS.OPUS).toBe('claude-opus-4-5-20251101');
+      expect(CLAUDE_MODELS.SONNET).toBe('claude-sonnet-4-5-20250929');
+      expect(CLAUDE_MODELS.HAIKU).toBe('claude-haiku-4-5-20251001');
+    });
+
+    it('should have Sonnet as default', () => {
+      expect(DEFAULT_MODEL).toBe(CLAUDE_MODELS.SONNET);
     });
   });
 });
