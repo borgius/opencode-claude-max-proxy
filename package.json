@@ -17,7 +17,7 @@
     "test:run": "vitest run",
     "test:unit": "vitest run",
     "test:e2e": "vitest run --config vitest.integration.config.ts",
-    "test:e2e:remote": "TEST_PROXY_URL=${TEST_PROXY_URL:-http://localhost:8080} vitest run --config vitest.integration.config.ts",
+    "test:e2e:remote": "if [ -z \"$TEST_PROXY_URL\" ]; then echo 'ERROR: TEST_PROXY_URL required. Usage: TEST_PROXY_URL=http://your-server npm run test:e2e:remote'; exit 1; fi && vitest run --config vitest.integration.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:all": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage",
