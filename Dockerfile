@@ -10,8 +10,8 @@ RUN useradd -m -s /bin/bash claude && \
 
 WORKDIR /app
 
-# Copy the server file
-COPY src/container-server.cjs ./
+# Copy the server file (v3 with true streaming)
+COPY src/container-server-v3.cjs ./container-server.cjs
 
 # Set ownership
 RUN chown -R claude:claude /app

@@ -41,6 +41,7 @@ curl -s http://localhost:8080/health | jq .
 # Test API with 20s timeout
 echo ""
 echo "📋 Testing /v1/messages endpoint (20s timeout)..."
+START_TIME=$(date +%s%N)
 RESPONSE=$(curl -s --max-time 20 -X POST http://localhost:8080/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
@@ -48,8 +49,10 @@ RESPONSE=$(curl -s --max-time 20 -X POST http://localhost:8080/v1/messages \
     "max_tokens": 100,
     "messages": [{"role": "user", "content": "Say hello in one word"}]
   }' 2>&1) || true
+END_TIME=$(date +%s%N)
+ELAPSED=$(( (END_TIME - START_TIME) / 1000000 ))
 
-echo "Response:"
+echo "Response received in ${ELAPSED}ms:"
 echo "$RESPONSE" | jq . 2>/dev/null || echo "$RESPONSE"
 
 # Cleanup
