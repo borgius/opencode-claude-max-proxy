@@ -3,20 +3,111 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/rynfar/opencode-claude-max-proxy.svg)](https://github.com/rynfar/opencode-claude-max-proxy/stargazers)
 
-**Use your Claude Max subscription with OpenHands via Cloudflare Containers** - No Anthropic API credits needed!
+**Use your Claude Max subscription with OpenAI-compatible tools via Cloudflare Containers** - No Anthropic API credits needed!
 
-This project deploys a serverless proxy using **Cloudflare Containers** (Docker-based) that authenticates with your Claude Max subscription, enabling you to use OpenHands and other tools without purchasing separate API credits.
+This project deploys a serverless proxy using **Cloudflare Containers** (Docker-based) that authenticates with your Claude Max subscription, enabling you to use OpenHands, Cursor, Continue, and other OpenAI-compatible tools without purchasing separate API credits.
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
+| **Full OpenAI API Compatibility** | `/v1/chat/completions` endpoint with all parameters |
+| **Anthropic API Support** | `/v1/messages` endpoint for native Anthropic clients |
 | **Claude Max Integration** | Uses your existing Claude Max subscription via OAuth |
-| **Cloudflare Containers** | Full Docker support with Node.js + Claude SDK |
-| **Serverless & Scale-to-Zero** | Only pay when actively processing requests |
-| **Global Edge Deployment** | Low latency worldwide |
-| **Streaming support** | Real-time SSE streaming |
-| **No API Credits Needed** | Leverage your Claude Max subscription |
+| **Cloudflare Containers** | Full Docker support with Node.js + Claude CLI |
+| **Streaming Support** | Real-time SSE streaming for both APIs |
+| **Model Aliases** | Use `gpt-4o`, `gpt-4-turbo`, etc. - automatically mapped to Claude |
+| **Tool Calling** | Full function/tool support for agentic workflows |
+| **Scale-to-Zero** | Only pay when actively processing requests |
+
+## v4.0.0 - Modular TypeScript Architecture
+
+This version features a complete rewrite with:
+- **Modular TypeScript codebase** - Clean separation of concerns
+- **Full OpenAI API compatibility** - All documented parameters supported
+- **Comprehensive test suite** - 117+ tests with Vitest
+- **Persistent Claude process** - Faster responses with request queueing
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/chat/completions` | POST | OpenAI Chat Completions API (full compatibility) |
+| `/v1/models` | GET | List available models |
+| `/v1/models/:id` | GET | Get model details |
+| `/v1/messages` | POST | Anthropic Messages API |
+| `/messages` | POST | Anthropic Messages API (alias) |
+| `/anthropic/v1/messages` | POST | Anthropic Messages API (namespaced) |
+| `/health` | GET | Detailed health check |
+| `/ping` | GET | Simple liveness check |
+| `/` | GET | Root health check |
+
+## Supported OpenAI Parameters
+
+| Parameter | Status | Notes |
+|-----------|--------|-------|
+| `model` | ✅ Required | Mapped to Claude models |
+| `messages` | ✅ Required | Full role support (system, user, assistant, tool) |
+| `stream` | ✅ Supported | SSE streaming with OpenAI chunk format |
+| `temperature` | ✅ Supported | 0-2 range, scaled to Claude's 0-1 |
+| `max_tokens` | ✅ Supported | - |
+| `top_p` | ✅ Supported | - |
+| `stop` | ✅ Supported | Stop sequences |
+| `tools` | ✅ Supported | Function calling |
+| `tool_choice` | ✅ Supported | auto, none, required, or specific |
+| `response_format` | ✅ Supported | JSON mode |
+| `reasoning_effort` | ✅ Supported | Maps to extended thinking |
+| `n` | ⚠️ Validated | Only n=1 supported |
+| `frequency_penalty` | ⚠️ Passthrough | Validated but limited effect |
+| `presence_penalty` | ⚠️ Passthrough | Validated but limited effect |
+| `seed` | ⚠️ Passthrough | For compatibility |
+| `user` | ⚠️ Passthrough | For compatibility |
+
+## Model Mapping
+
+| OpenAI Model | Claude Model |
+|--------------|--------------|
+| `gpt-4o` | `claude-sonnet-4-20250514` |
+| `gpt-4o-mini` | `claude-3-5-haiku-20241022` |
+| `gpt-4-turbo` | `claude-sonnet-4-20250514` |
+| `gpt-4` | `claude-sonnet-4-20250514` |
+| `gpt-3.5-turbo` | `claude-3-5-haiku-20241022` |
+| `o1` | `claude-3-5-sonnet-20241022` |
+| `o1-mini` | `claude-3-5-haiku-20241022` |
+| `o1-preview` | `claude-3-5-sonnet-20241022` |
+| `claude-*` | Direct passthrough |
+
+## Project Structure
+
+```
+src/
+├── core/
+│   ├── types.ts          # TypeScript types for all APIs
+│   ├── logger.ts         # Structured logging with levels
+│   ├── config.ts         # OAuth credentials and server config
+│   └── claude-manager.ts # Persistent Claude CLI process manager
+├── converters/
+│   ├── messages.ts       # Message format conversions
+│   └── responses.ts      # Response stream converters
+├── handlers/
+│   ├── openai-chat.ts    # OpenAI Chat Completions handler
+│   ├── anthropic-messages.ts # Anthropic Messages handler
+│   ├── models.ts         # Models listing and aliases
+│   └── health.ts         # Health check endpoints
+├── server/
+│   ├── middleware.ts     # CORS, auth, request parsing
+│   └── server.ts         # HTTP server with routing
+└── container-server.ts   # Main entry point
+
+test/
+├── setup.ts              # Test utilities and mocks
+├── health.test.ts        # Health endpoint tests
+├── models.test.ts        # Models API tests
+├── openai-chat.test.ts   # OpenAI chat tests (stream + non-stream)
+├── anthropic-messages.test.ts # Anthropic tests (stream + non-stream)
+├── converters.test.ts    # Converter tests
+└── server.test.ts        # Middleware tests
+```
 
 ## Prerequisites
 
@@ -56,108 +147,183 @@ npx wrangler login
 npm run deploy
 ```
 
-The deploy script will:
-- Extract OAuth credentials from your keychain
-- Upload them as encrypted Cloudflare secrets
-- Build the Docker container
-- Deploy to Cloudflare Containers
-
 Your proxy will be available at: `https://opencode-claude-proxy.<your-account>.workers.dev`
 
-## Detailed Setup
+## Development
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for:
-- Manual deployment steps
-- Configuration options
-- Instance type selection
-- Troubleshooting
-- Security best practices
-
-## Usage with OpenHands
-
-Configure OpenHands to use your proxy:
+### Build
 
 ```bash
-export LLM_BASE_URL=https://opencode-claude-proxy.<your-account>.workers.dev
-export LLM_API_KEY=dummy  # Not validated
-export LLM_MODEL=claude-sonnet-4-20250514
+npm run build
+```
 
-# Start OpenHands
+### Run Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
+```
+
+### Type Check
+
+```bash
+npm run typecheck
+```
+
+## Usage Examples
+
+### OpenAI SDK (Python)
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://opencode-claude-proxy.<account>.workers.dev/v1",
+    api_key="dummy"  # Not validated
+)
+
+response = client.chat.completions.create(
+    model="gpt-4o",  # Mapped to claude-sonnet-4
+    messages=[{"role": "user", "content": "Hello!"}],
+    stream=True
+)
+
+for chunk in response:
+    print(chunk.choices[0].delta.content, end="")
+```
+
+### OpenAI SDK (Node.js)
+
+```typescript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+    baseURL: 'https://opencode-claude-proxy.<account>.workers.dev/v1',
+    apiKey: 'dummy'
+});
+
+const stream = await client.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [{ role: 'user', content: 'Hello!' }],
+    stream: true
+});
+
+for await (const chunk of stream) {
+    process.stdout.write(chunk.choices[0]?.delta?.content || '');
+}
+```
+
+### Anthropic SDK
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="https://opencode-claude-proxy.<account>.workers.dev",
+    api_key="dummy"
+)
+
+message = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(message.content[0].text)
+```
+
+### OpenHands
+
+```bash
+export LLM_BASE_URL=https://opencode-claude-proxy.<account>.workers.dev
+export LLM_API_KEY=dummy
+export LLM_MODEL=gpt-4o
+
 openhands
 ```
 
-Or add to your OpenHands config file:
+### Cursor
 
-```yaml
-llm:
-  base_url: https://opencode-claude-proxy.<your-account>.workers.dev
-  api_key: dummy
-  model: claude-sonnet-4-20250514
+In Cursor settings, configure:
+- API Base URL: `https://opencode-claude-proxy.<account>.workers.dev/v1`
+- API Key: `dummy`
+- Model: `gpt-4o`
+
+### cURL
+
+```bash
+# OpenAI format
+curl -X POST https://opencode-claude-proxy.<account>.workers.dev/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+
+# Anthropic format
+curl -X POST https://opencode-claude-proxy.<account>.workers.dev/v1/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
 ```
 
 ## Architecture
 
 ```
-┌─────────────┐
-│  OpenHands  │
-│   Request   │
-└──────┬──────┘
-       │
-       v
-┌─────────────────────────────────┐
-│   Cloudflare Worker (Edge)      │
-│   - Request routing             │
-│   - Durable Object management   │
-└──────────────┬──────────────────┘
-               │
-               v
-┌──────────────────────────────────┐
-│  Durable Object (State Manager)  │
-│  - Container lifecycle           │
-│  - Request forwarding            │
-└──────────────┬───────────────────┘
-               │
-               v
-┌───────────────────────────────────┐
-│   Docker Container                │
-│   - Node.js + Claude SDK          │
-│   - OAuth credentials (encrypted) │
-│   - HTTP server on port 8080      │
-└──────────────┬────────────────────┘
-               │
-               v
-┌──────────────────────────┐
-│   Anthropic API          │
-│   (Claude Max Auth)      │
-└──────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    Client Applications                   │
+│  (OpenHands, Cursor, Continue, custom apps)             │
+└─────────────────────────┬───────────────────────────────┘
+                          │ OpenAI or Anthropic API
+                          v
+┌─────────────────────────────────────────────────────────┐
+│               Cloudflare Worker (Edge)                   │
+│               - Request routing                          │
+│               - Durable Object management                │
+└─────────────────────────┬───────────────────────────────┘
+                          │
+                          v
+┌─────────────────────────────────────────────────────────┐
+│           Durable Object (State Manager)                 │
+│           - Container lifecycle                          │
+│           - Request forwarding                           │
+└─────────────────────────┬───────────────────────────────┘
+                          │
+                          v
+┌─────────────────────────────────────────────────────────┐
+│                  Docker Container                        │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │              HTTP Server (Port 8080)             │    │
+│  │  - OpenAI endpoint: /v1/chat/completions        │    │
+│  │  - Anthropic endpoint: /v1/messages             │    │
+│  │  - Models endpoint: /v1/models                  │    │
+│  └─────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │           Claude Manager (Persistent)            │    │
+│  │  - Claude CLI process with stream-json          │    │
+│  │  - Request queueing                              │    │
+│  │  - OAuth authentication                          │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────┬───────────────────────────────┘
+                          │
+                          v
+┌─────────────────────────────────────────────────────────┐
+│                    Anthropic API                         │
+│                  (Claude Max Auth)                       │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## How It Works
-
-1. **Request arrives** at Cloudflare Worker edge location
-2. **Worker spawns/reuses** a Durable Object to manage container state
-3. **Durable Object starts** a Docker container if needed (or reuses existing)
-4. **Container authenticates** with Anthropic using your Claude Max OAuth credentials
-5. **Response streams** back through the chain to OpenHands
-
-Containers automatically **scale to zero** when idle, saving costs.
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/v1/messages` | POST | Anthropic Messages API (compatible) |
-
 ## Configuration
-
-### Environment Variables (Container)
-
-Set via Cloudflare secrets:
-
-| Secret | Description | How to Set |
-|--------|-------------|------------|
-| `CLAUDE_OAUTH_CREDS` | OAuth credentials JSON from keychain | Auto-set by deploy script |
 
 ### Container Settings (wrangler.toml)
 
@@ -169,36 +335,35 @@ instance_type = "standard-2"  # Adjust based on needs
 max_instances = 5              # Max concurrent containers
 ```
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for all instance types and configuration options.
+### Environment Variables
 
-## Cost Breakdown
+Set via Cloudflare secrets:
 
-### Cloudflare
-- **Workers Paid Plan**: $5/month (required for Containers)
-- **Container runtime**: Scale-to-zero pricing (only pay when running)
-- **Storage**: Minimal (container images)
-
-### Claude
-- **Claude Max**: Your existing subscription (no additional API costs!)
-
-**Total additional cost**: ~$5-10/month depending on usage
+| Secret | Description |
+|--------|-------------|
+| `CLAUDE_OAUTH_CREDS` | OAuth credentials JSON from keychain |
+| `PROXY_API_KEY` | Optional: Require API key for proxy access |
 
 ## Testing
 
 ```bash
-# Health check
-curl https://opencode-claude-proxy.<account>.workers.dev/health
+# Run all tests
+npm test
 
-# Send a message
-curl -X POST https://opencode-claude-proxy.<account>.workers.dev/v1/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4-20250514",
-    "max_tokens": 100,
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "stream": true
-  }'
+# Run with coverage
+npm run test:coverage
+
+# Run specific test file
+npm test -- health.test.ts
 ```
+
+Test coverage includes:
+- Health endpoints (4 tests)
+- Models API (15 tests)
+- OpenAI Chat Completions (19 tests)
+- Anthropic Messages (18 tests)
+- Message/Response converters (40 tests)
+- Server middleware (21 tests)
 
 ## Monitoring
 
@@ -224,66 +389,43 @@ Re-run the deployment script to refresh OAuth credentials:
 npm run deploy
 ```
 
-Or manually update the secret:
-```bash
-OAUTH_CREDS=$(security find-generic-password -s "Claude Code-credentials" -a "admin" -w)
-echo "$OAUTH_CREDS" | wrangler secret put CLAUDE_OAUTH_CREDS
-```
-
 ### "Docker not running"
 Ensure Docker Desktop is running:
 ```bash
 docker info
 ```
 
-### Container crashes
-Check logs for errors:
-```bash
-npm run tail
-```
-
 ### Token expired
-The OAuth credentials include a refresh token. If you see persistent auth errors:
 1. Run `npx claude login` again
 2. Re-deploy: `npm run deploy`
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed troubleshooting.
 
-## Why Cloudflare Containers?
+## Cost Breakdown
 
-Unlike traditional Cloudflare Workers (JavaScript/WASM only), **Cloudflare Containers** allows running full Docker containers, which enables:
+| Service | Cost |
+|---------|------|
+| Cloudflare Workers Paid | $5/month |
+| Container runtime | Scale-to-zero (pay per use) |
+| Claude Max | Your existing subscription |
 
-- Running the Claude CLI and Node.js SDK
-- Persistent OAuth authentication
-- Full filesystem access
-- Any programming language/runtime
-- Existing Docker images
-
-This is perfect for integrating with Claude Max since the OAuth tokens can't be used directly with the Messages API.
-
-## Alternatives Considered
-
-| Approach | Issue |
-|----------|-------|
-| Direct OAuth API calls | OAuth tokens don't work with `/v1/messages` endpoint |
-| AI Gateway with API key | Requires purchasing Anthropic API credits separately |
-| Local proxy | Must keep computer running 24/7 |
-| VPS deployment | More expensive and complex |
-| **Cloudflare Containers** | ✅ Serverless, cost-effective, uses Claude Max |
+**Total additional cost**: ~$5-10/month depending on usage
 
 ## Security
 
 - OAuth credentials stored as **encrypted Cloudflare secrets**
 - Containers are **isolated** and managed by Cloudflare
-- Add `PROXY_API_KEY` secret to require authentication for your proxy
+- Optional `PROXY_API_KEY` secret to require authentication
 - Credentials never exposed in logs or code
+- Sensitive data masked in logging
 
 ## Contributing
 
 Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
-3. Submit a pull request
+3. Run tests: `npm test`
+4. Submit a pull request
 
 ## Support
 
@@ -297,5 +439,5 @@ MIT
 ## Credits
 
 - Built with [Cloudflare Containers](https://developers.cloudflare.com/containers/)
-- Uses [@anthropic-ai/sdk](https://www.npmjs.com/package/@anthropic-ai/sdk)
+- Uses [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) with stream-json protocol
 - Powered by [Claude Max](https://claude.ai)
