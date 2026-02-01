@@ -1,14 +1,21 @@
 {
   "name": "opencode-claude-proxy",
-  "version": "3.0.0",
-  "description": "Cloudflare Containers proxy for OpenCode using Claude Max subscription",
+  "version": "4.0.0",
+  "description": "Cloudflare Containers proxy for OpenCode using Claude Max subscription with full OpenAI API compatibility",
   "type": "module",
-  "main": "src/worker.js",
+  "main": "dist/container-server.js",
   "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "start": "node dist/container-server.js",
+    "start:dev": "node --import tsx src/container-server.ts",
     "dev": "wrangler dev",
     "deploy": "./deploy.sh",
     "deploy:manual": "wrangler deploy",
     "update-creds": "./update-creds.sh",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:local": "./test-local.sh",
     "typecheck": "tsc --noEmit",
     "tail": "wrangler tail",
@@ -22,7 +29,12 @@
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.27",
     "@cloudflare/workers-types": "^4.20241230.0",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.8.2",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0",
     "wrangler": "^4.61.1"
   },
   "keywords": [

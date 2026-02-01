@@ -14,8 +14,11 @@ export default {
       });
     }
 
-    // Route to container
-    if (url.pathname.startsWith('/v1/')) {
+    // Route to container - handle all API paths
+    // OpenAI: /v1/chat/completions, /v1/models, /v1/responses
+    // Anthropic: /v1/messages, /messages, /anthropic/v1/messages
+    const apiPaths = ['/v1/', '/messages', '/anthropic/'];
+    if (apiPaths.some(p => url.pathname.startsWith(p))) {
       console.log(`[${reqId}] Routing to container...`);
       try {
         // Get or create Durable Object for container

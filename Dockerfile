@@ -1,3 +1,21 @@
+FROM node:22-slim AS builder
+
+WORKDIR /build
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Install dependencies (including dev deps for building)
+RUN npm install
+
+# Copy source files
+COPY src/ ./src/
+
+# Build TypeScript
+RUN npm run build
+
+# Production stage
 FROM node:22-slim
 
 # Install Claude Code CLI globally
@@ -10,8 +28,12 @@ RUN useradd -m -s /bin/bash claude && \
 
 WORKDIR /app
 
-# Copy the server file (v6 with persistent process, no sessions)
-COPY src/container-server-v6.cjs ./container-server.cjs
+# Copy built files from builder
+COPY --from=builder /build/dist ./dist/
+COPY --from=builder /build/package.json ./
+
+# Install production dependencies only
+RUN npm install --omit=dev
 
 # Set ownership
 RUN chown -R claude:claude /app
@@ -21,4 +43,4 @@ USER claude
 
 EXPOSE 8080
 
-CMD ["node", "container-server.cjs"]
+CMD ["node", "dist/container-server.js"]
