@@ -30,7 +30,13 @@
       "new_sqlite_classes": ["ClaudeContainer"],
       "tag": "v1"
     }
-  ]
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  }
 
   // Secrets (set via `wrangler secret put`):
   // - CLAUDE_OAUTH_CREDS (JSON string with OAuth credentials)

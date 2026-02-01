@@ -5,41 +5,56 @@ const readline = require('node:readline');
 const PORT = process.env.PORT || 8080;
 const HOST = '0.0.0.0';
 
-console.log(`Starting container server v3 (true streaming) on ${HOST}:${PORT}`);
-console.log('Node version:', process.version);
+// Simple logger with timestamps
+function log(level, msg, data = null) {
+  const ts = new Date().toISOString();
+  const dataStr = data ? ` ${JSON.stringify(data)}` : '';
+  console.log(`[${ts}] [${level}] ${msg}${dataStr}`);
+}
+
+log('INFO', 'Starting container server v3 (true streaming)', { host: HOST, port: PORT });
+log('INFO', 'Node version', { version: process.version });
 
 // Parse OAuth credentials
 let oauthToken = null;
 let subscriptionType = 'unknown';
 
+log('INFO', 'Parsing OAuth credentials...');
+log('DEBUG', 'Environment vars', {
+  hasClaude_OAUTH_CREDS: !!process.env.CLAUDE_OAUTH_CREDS,
+  hasCLAUDE_CODE_OAUTH_TOKEN: !!process.env.CLAUDE_CODE_OAUTH_TOKEN,
+});
+
 try {
   const credsStr = process.env.CLAUDE_OAUTH_CREDS;
   if (credsStr) {
+    log('DEBUG', 'CLAUDE_OAUTH_CREDS length', { len: credsStr.length });
     const parsed = JSON.parse(credsStr);
     if (parsed.claudeAiOauth?.accessToken) {
       oauthToken = parsed.claudeAiOauth.accessToken;
       subscriptionType = parsed.claudeAiOauth.subscriptionType || 'unknown';
+      log('INFO', 'OAuth token from CLAUDE_OAUTH_CREDS (nested)', { subscription: subscriptionType, tokenLen: oauthToken.length });
     } else if (parsed.accessToken) {
       oauthToken = parsed.accessToken;
       subscriptionType = parsed.subscriptionType || 'unknown';
+      log('INFO', 'OAuth token from CLAUDE_OAUTH_CREDS (direct)', { subscription: subscriptionType, tokenLen: oauthToken.length });
     }
 
     if (oauthToken) {
       process.env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
-      console.log('OAuth token configured, subscription:', subscriptionType);
     }
   }
 
   if (!oauthToken && process.env.CLAUDE_CODE_OAUTH_TOKEN) {
     oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-    console.log('Using CLAUDE_CODE_OAUTH_TOKEN from environment');
+    log('INFO', 'Using CLAUDE_CODE_OAUTH_TOKEN from environment', { tokenLen: oauthToken.length });
   }
 
   if (!oauthToken) {
-    console.warn('No OAuth token available');
+    log('WARN', 'No OAuth token available at startup');
   }
 } catch (e) {
-  console.error('Failed to parse credentials:', e.message);
+  log('ERROR', 'Failed to parse credentials', { error: e.message });
 }
 
 // Convert messages to prompt
@@ -60,6 +75,11 @@ function generateId() {
 
 // Run Claude with true streaming via stream-json + include-partial-messages
 function runClaudeStreaming(prompt, onEvent, onError, onDone) {
+  const requestId = Math.random().toString(36).substring(2, 8);
+  const startTime = Date.now();
+
+  log('INFO', 'Starting Claude CLI', { requestId, promptLen: prompt.length });
+
   const args = [
     '-p',
     '--input-format', 'stream-json',
@@ -69,6 +89,8 @@ function runClaudeStreaming(prompt, onEvent, onError, onDone) {
     '--dangerously-skip-permissions',
     '--no-session-persistence',
   ];
+
+  log('DEBUG', 'Spawning claude', { requestId, args: args.join(' ') });
 
   const child = spawn('claude', args, {
     env: {
@@ -80,6 +102,8 @@ function runClaudeStreaming(prompt, onEvent, onError, onDone) {
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
+  log('DEBUG', 'Claude process spawned', { requestId, pid: child.pid });
+
   // Send user message
   const inputMessage = JSON.stringify({
     type: 'user',
@@ -87,29 +111,45 @@ function runClaudeStreaming(prompt, onEvent, onError, onDone) {
   });
   child.stdin.write(inputMessage + '\n');
   child.stdin.end();
+  log('DEBUG', 'Input message sent', { requestId });
 
   const rl = readline.createInterface({ input: child.stdout });
+  let eventCount = 0;
+  let firstEventTime = null;
 
   rl.on('line', (line) => {
     if (!line.trim()) return;
     try {
       const msg = JSON.parse(line);
+      eventCount++;
+      if (!firstEventTime) {
+        firstEventTime = Date.now();
+        log('INFO', 'First event received', { requestId, elapsed: firstEventTime - startTime, type: msg.type });
+      }
+      if (msg.type === 'result') {
+        log('INFO', 'Result received', { requestId, elapsed: Date.now() - startTime, eventCount });
+      }
       onEvent(msg);
     } catch (e) {
-      console.error('Parse error:', line.slice(0, 100));
+      log('ERROR', 'JSON parse error', { requestId, line: line.slice(0, 100) });
     }
   });
 
   child.stderr.on('data', (data) => {
-    console.error('stderr:', data.toString());
+    log('WARN', 'Claude stderr', { requestId, data: data.toString().slice(0, 200) });
   });
 
   child.on('close', (code) => {
+    const elapsed = Date.now() - startTime;
+    log('INFO', 'Claude process closed', { requestId, code, elapsed, eventCount });
     rl.close();
     onDone(code);
   });
 
-  child.on('error', onError);
+  child.on('error', (err) => {
+    log('ERROR', 'Claude process error', { requestId, error: err.message });
+    onError(err);
+  });
 
   return child;
 }
@@ -145,19 +185,24 @@ function runClaudeNonStreaming(prompt) {
 }
 
 const server = http.createServer(async (req, res) => {
-  console.log(`${req.method} ${req.url}`);
+  const reqId = Math.random().toString(36).substring(2, 8);
+  const reqStart = Date.now();
+
+  log('INFO', 'Request received', { reqId, method: req.method, url: req.url });
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version');
 
   if (req.method === 'OPTIONS') {
+    log('DEBUG', 'OPTIONS request', { reqId });
     res.writeHead(204);
     res.end();
     return;
   }
 
   if (req.url === '/health' || req.url === '/') {
+    log('DEBUG', 'Health check', { reqId, hasOAuth: !!oauthToken });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'healthy',
@@ -174,10 +219,14 @@ const server = http.createServer(async (req, res) => {
     req.on('data', chunk => body += chunk.toString());
 
     req.on('end', async () => {
+      log('DEBUG', 'Request body received', { reqId, bodyLen: body.length });
+
       try {
         const { messages, model, stream } = JSON.parse(body);
+        log('INFO', 'Parsed request', { reqId, messageCount: messages?.length, model, stream });
 
         if (!messages || !Array.isArray(messages)) {
+          log('WARN', 'Invalid request - no messages', { reqId });
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: { message: 'messages array required' } }));
           return;
@@ -186,16 +235,23 @@ const server = http.createServer(async (req, res) => {
         // Handle header credentials
         if (!oauthToken) {
           const headerCreds = req.headers['x-oauth-creds'];
+          log('DEBUG', 'Checking header credentials', { reqId, hasHeaderCreds: !!headerCreds, headerLen: headerCreds?.length });
           if (headerCreds) {
             try {
               const parsed = JSON.parse(headerCreds);
               const token = parsed.claudeAiOauth?.accessToken || parsed.accessToken;
-              if (token) process.env.CLAUDE_CODE_OAUTH_TOKEN = token;
-            } catch {}
+              if (token) {
+                process.env.CLAUDE_CODE_OAUTH_TOKEN = token;
+                log('INFO', 'OAuth token set from header', { reqId, tokenLen: token.length });
+              }
+            } catch (e) {
+              log('ERROR', 'Failed to parse header creds', { reqId, error: e.message });
+            }
           }
         }
 
         if (!process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+          log('ERROR', 'No OAuth token available', { reqId });
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: { message: 'No OAuth token' } }));
           return;
@@ -204,6 +260,7 @@ const server = http.createServer(async (req, res) => {
         const prompt = messagesToPrompt(messages);
         const msgId = generateId();
         const modelName = model || 'claude-sonnet-4-20250514';
+        log('INFO', 'Processing request', { reqId, msgId, promptLen: prompt.length, stream });
 
         if (stream) {
           // TRUE STREAMING - forward events as they arrive
@@ -282,18 +339,22 @@ const server = http.createServer(async (req, res) => {
               }
             },
             (err) => {
+              log('ERROR', 'Stream error', { reqId, error: err.message, elapsed: Date.now() - reqStart });
               res.write(`event: error\ndata: ${JSON.stringify({ error: { message: err.message } })}\n\n`);
               res.end();
             },
             () => {
+              log('INFO', 'Stream completed', { reqId, elapsed: Date.now() - reqStart });
               res.end();
             }
           );
 
         } else {
           // Non-streaming
+          log('INFO', 'Non-streaming request starting', { reqId });
           try {
             const result = await runClaudeNonStreaming(prompt);
+            log('INFO', 'Non-streaming completed', { reqId, elapsed: Date.now() - reqStart, textLen: result.text?.length });
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
               id: msgId,
@@ -309,6 +370,7 @@ const server = http.createServer(async (req, res) => {
               }
             }));
           } catch (error) {
+            log('ERROR', 'Non-streaming error', { reqId, elapsed: Date.now() - reqStart, error: error.message });
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: { message: error.message } }));
           }
@@ -331,12 +393,12 @@ const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ error: { message: 'Not Found' } }));
 });
 
-server.on('error', (err) => console.error('Server error:', err));
+server.on('error', (err) => log('ERROR', 'Server error', { error: err.message }));
 
 server.listen(PORT, HOST, () => {
-  console.log(`Container server v3 listening on ${HOST}:${PORT}`);
-  console.log('Using true streaming with include-partial-messages');
+  log('INFO', 'Server started', { host: HOST, port: PORT });
+  log('INFO', 'Using true streaming with include-partial-messages');
 });
 
-process.on('uncaughtException', (err) => console.error('Uncaught:', err));
-process.on('unhandledRejection', (err) => console.error('Unhandled:', err));
+process.on('uncaughtException', (err) => log('ERROR', 'Uncaught exception', { error: err.message, stack: err.stack }));
+process.on('unhandledRejection', (err) => log('ERROR', 'Unhandled rejection', { error: err?.message, stack: err?.stack }));
