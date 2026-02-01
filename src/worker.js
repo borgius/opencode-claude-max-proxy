@@ -57,6 +57,9 @@ export class ClaudeContainer extends Container {
   // Set the default port that the container listens on
   defaultPort = 8080;
 
+  // Keep container warm for 5 minutes after last request (prevents cold starts)
+  sleepAfter = '5m';
+
   // Environment variables passed to container
   envVars = {};
 
