@@ -1,15 +1,23 @@
 FROM node:22-slim
 
-# Install Claude Code CLI globally (v2.0.72 - later versions have 60s latency bug)
-RUN npm install -g @anthropic-ai/claude-code@2.0.72
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create non-root user (required for --dangerously-skip-permissions)
+RUN useradd -m -s /bin/bash claude && \
+    mkdir -p /home/claude/.claude && \
+    chown -R claude:claude /home/claude
 
 WORKDIR /app
 
 # Copy the server file
 COPY src/container-server.cjs ./
 
-# Create .claude directory for credentials
-RUN mkdir -p /root/.claude
+# Set ownership
+RUN chown -R claude:claude /app
+
+# Switch to non-root user
+USER claude
 
 EXPOSE 8080
 
