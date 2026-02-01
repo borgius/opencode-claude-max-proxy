@@ -66,18 +66,23 @@ function messagesToPrompt(messages) {
 // Run Claude CLI with a prompt
 function runClaude(prompt) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', prompt, '--dangerously-skip-permissions', '--output-format', 'json'];
+    const args = [
+      '-p', prompt,
+      '--dangerously-skip-permissions',
+      '--output-format', 'json',
+      '--no-session-persistence',      // Don't save sessions to disk
+    ];
 
-    console.log('Running claude CLI with args:', args.slice(0, 2).join(' '), '...');
+    console.log('Running claude CLI...');
 
     const child = spawn('claude', args, {
       env: {
         ...process.env,
-        CI: 'true',  // Tell CLI we're in non-interactive mode
+        CI: 'true',
         TERM: 'dumb',
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 'true'
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 'true',
       },
-      stdio: ['ignore', 'pipe', 'pipe']  // ignore stdin to prevent hanging
+      stdio: ['ignore', 'pipe', 'pipe']
     });
 
     let stdout = '';
