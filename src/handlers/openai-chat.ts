@@ -11,8 +11,17 @@ import type {
   AnthropicUsage,
 } from '../core/types.js';
 import { logger } from '../core/logger.js';
-import { claudeManager } from '../core/claude-manager.js';
 import { openaiMessagesToPrompt } from '../converters/messages.js';
+
+// Lazy import to avoid loading ClaudeProcessManager on module init
+let _claudeManager: typeof import('../core/claude-manager.js').claudeManager | null = null;
+async function getClaudeManager() {
+  if (!_claudeManager) {
+    const mod = await import('../core/claude-manager.js');
+    _claudeManager = mod.claudeManager;
+  }
+  return _claudeManager;
+}
 import {
   generateId,
   buildChatCompletionResponse,
@@ -126,11 +135,11 @@ function logRequestParams(reqId: string, request: OpenAIChatCompletionRequest): 
 /**
  * Handle streaming response
  */
-function handleStreamingResponse(
+async function handleStreamingResponse(
   res: ServerResponse,
   request: OpenAIChatCompletionRequest,
   reqId: string
-): void {
+): Promise<void> {
   const msgId = generateId('chatcmpl');
   const model = request.model;
   const includeUsage = request.stream_options?.include_usage ?? false;
@@ -147,6 +156,7 @@ function handleStreamingResponse(
   const state = new OpenAIStreamingState(msgId, model);
   let accumulatedText = '';
 
+  const claudeManager = await getClaudeManager();
   claudeManager.sendMessage(
     prompt,
     // onEvent
@@ -208,11 +218,11 @@ function handleStreamingResponse(
 /**
  * Handle non-streaming response
  */
-function handleNonStreamingResponse(
+async function handleNonStreamingResponse(
   res: ServerResponse,
   request: OpenAIChatCompletionRequest,
   reqId: string
-): void {
+): Promise<void> {
   const msgId = generateId('chatcmpl');
   const model = request.model;
 
@@ -221,6 +231,7 @@ function handleNonStreamingResponse(
   let usage: AnthropicUsage = { input_tokens: 0, output_tokens: 0 };
   let stopReason: string = 'end_turn';
 
+  const claudeManager = await getClaudeManager();
   claudeManager.sendMessage(
     prompt,
     // onEvent

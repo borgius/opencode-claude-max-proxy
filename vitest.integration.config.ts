@@ -12,10 +12,10 @@ export default defineConfig({
     testTimeout: 120000, // 2 minutes for real API calls
     hookTimeout: 120000,
     // Run tests sequentially to avoid Claude process conflicts
-    pool: 'forks',
+    pool: 'threads',
     poolOptions: {
-      forks: {
-        singleFork: true,
+      threads: {
+        singleThread: true,
       },
     },
   },

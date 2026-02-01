@@ -94,8 +94,8 @@ describe('Health Endpoints', () => {
   });
 
   describe('getHealthStatus', () => {
-    it('should return complete health status object', () => {
-      const status = getHealthStatus();
+    it('should return complete health status object', async () => {
+      const status = await getHealthStatus();
 
       expect(status).toHaveProperty('status');
       expect(status).toHaveProperty('version');

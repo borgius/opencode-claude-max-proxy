@@ -7,7 +7,6 @@ import * as http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { logger } from '../core/logger.js';
 import { config } from '../core/config.js';
-import { claudeManager } from '../core/claude-manager.js';
 import {
   setCorsHeaders,
   handleCorsPreflightRequest,
@@ -145,7 +144,7 @@ function matchRoute(
 /**
  * Main request handler
  */
-async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const startTime = Date.now();
   const reqId = generateRequestId();
   const method = req.method || 'GET';
@@ -246,7 +245,7 @@ export function createServer(options: ServerOptions): http.Server {
  * Graceful shutdown
  */
 export function setupGracefulShutdown(server: http.Server): void {
-  const shutdown = (signal: string) => {
+  const shutdown = async (signal: string) => {
     logger.info(`${signal} received, shutting down gracefully`);
 
     // Stop accepting new connections
@@ -254,7 +253,8 @@ export function setupGracefulShutdown(server: http.Server): void {
       logger.info('HTTP server closed');
     });
 
-    // Shutdown Claude process
+    // Shutdown Claude process (dynamic import to avoid loading on module init)
+    const { claudeManager } = await import('../core/claude-manager.js');
     claudeManager.shutdown();
 
     // Exit after timeout

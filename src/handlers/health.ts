@@ -3,9 +3,18 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { claudeManager } from '../core/claude-manager.js';
 import { config } from '../core/config.js';
 import { logger } from '../core/logger.js';
+
+// Lazy import to avoid loading ClaudeProcessManager on module init
+let _claudeManager: typeof import('../core/claude-manager.js').claudeManager | null = null;
+async function getClaudeManager() {
+  if (!_claudeManager) {
+    const mod = await import('../core/claude-manager.js');
+    _claudeManager = mod.claudeManager;
+  }
+  return _claudeManager;
+}
 
 /**
  * Health check response structure
@@ -33,8 +42,9 @@ export interface HealthResponse {
 /**
  * Get current health status
  */
-export function getHealthStatus(): HealthResponse {
+export async function getHealthStatus(): Promise<HealthResponse> {
   const creds = config.getCredentials();
+  const claudeManager = await getClaudeManager();
   const processStatus = claudeManager.getStatus();
 
   return {
@@ -75,7 +85,7 @@ export async function handleHealthCheck(
 ): Promise<void> {
   logger.debug('Health check request', { reqId });
 
-  const health = getHealthStatus();
+  const health = await getHealthStatus();
   const statusCode = health.status === 'unhealthy' ? 503 : 200;
 
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
