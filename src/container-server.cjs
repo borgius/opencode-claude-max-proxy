@@ -1,5 +1,5 @@
 const http = require('node:http');
-const https = require('node:https');
+const { spawn } = require('node:child_process');
 
 const PORT = process.env.PORT || 8080;
 const HOST = '0.0.0.0';
@@ -7,80 +7,139 @@ const HOST = '0.0.0.0';
 console.log(`Starting container server on ${HOST}:${PORT}`);
 console.log('Node version:', process.version);
 
-// Parse OAuth credentials safely - handles nested structure
-let oauthCreds = {};
-let accessToken = null;
-let refreshToken = null;
+// Parse OAuth credentials and set up environment for Claude CLI
+let oauthToken = null;
+let subscriptionType = 'unknown';
+
 try {
   const credsStr = process.env.CLAUDE_OAUTH_CREDS;
   if (credsStr) {
     const parsed = JSON.parse(credsStr);
     // Handle nested structure: {claudeAiOauth: {accessToken: ...}}
-    if (parsed.claudeAiOauth) {
-      oauthCreds = parsed.claudeAiOauth;
-      accessToken = oauthCreds.accessToken;
-      refreshToken = oauthCreds.refreshToken;
+    if (parsed.claudeAiOauth?.accessToken) {
+      oauthToken = parsed.claudeAiOauth.accessToken;
+      subscriptionType = parsed.claudeAiOauth.subscriptionType || 'unknown';
     } else if (parsed.accessToken) {
       // Direct structure: {accessToken: ...}
-      oauthCreds = parsed;
-      accessToken = parsed.accessToken;
-      refreshToken = parsed.refreshToken;
+      oauthToken = parsed.accessToken;
+      subscriptionType = parsed.subscriptionType || 'unknown';
     }
-    console.log('OAuth credentials loaded, subscription:', oauthCreds.subscriptionType);
-  } else {
-    console.warn('No CLAUDE_OAUTH_CREDS environment variable');
+
+    if (oauthToken) {
+      // Set the env var for Claude CLI
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+      console.log('OAuth token configured for Claude CLI, subscription:', subscriptionType);
+    }
+  }
+
+  // Also check direct env var
+  if (!oauthToken && process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+    oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    console.log('Using CLAUDE_CODE_OAUTH_TOKEN from environment');
+  }
+
+  if (!oauthToken) {
+    console.warn('No OAuth token available - Claude CLI will fail to authenticate');
   }
 } catch (e) {
   console.error('Failed to parse CLAUDE_OAUTH_CREDS:', e.message);
 }
 
-// Make API request with Bearer auth (OAuth tokens need Bearer, not x-api-key)
-async function makeAnthropicRequest(token, requestData, isStreaming) {
+// Convert messages array to a prompt string
+function messagesToPrompt(messages) {
+  return messages.map(m => {
+    if (typeof m.content === 'string') {
+      return `${m.role}: ${m.content}`;
+    }
+    // Handle content array (e.g., with images)
+    if (Array.isArray(m.content)) {
+      const textParts = m.content
+        .filter(c => c.type === 'text')
+        .map(c => c.text)
+        .join('\n');
+      return `${m.role}: ${textParts}`;
+    }
+    return '';
+  }).join('\n\n');
+}
+
+// Run Claude CLI with a prompt
+function runClaude(prompt) {
   return new Promise((resolve, reject) => {
-    const postData = JSON.stringify(requestData);
+    const args = ['-p', prompt, '--dangerously-skip-permissions', '--output-format', 'json'];
 
-    const options = {
-      hostname: 'api.anthropic.com',
-      port: 443,
-      path: '/v1/messages',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'anthropic-version': '2023-06-01',
-        'Content-Length': Buffer.byteLength(postData),
+    console.log('Running claude CLI with args:', args.slice(0, 2).join(' '), '...');
+
+    const child = spawn('claude', args, {
+      env: {
+        ...process.env,
+        CI: 'true',  // Tell CLI we're in non-interactive mode
+        TERM: 'dumb',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 'true'
       },
-    };
+      stdio: ['ignore', 'pipe', 'pipe']  // ignore stdin to prevent hanging
+    });
 
-    const req = https.request(options, (res) => {
-      if (isStreaming) {
-        resolve(res);
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+      if (code !== 0) {
+        console.error('Claude CLI error:', stderr);
+        reject(new Error(stderr || `Claude CLI exited with code ${code}`));
       } else {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
-          resolve({ statusCode: res.statusCode, data });
-        });
+        try {
+          const result = JSON.parse(stdout);
+          resolve(result);
+        } catch (e) {
+          // If not JSON, return raw text
+          resolve({ result: stdout });
+        }
       }
     });
 
-    req.on('error', reject);
-    req.write(postData);
-    req.end();
+    child.on('error', (err) => {
+      reject(err);
+    });
   });
+}
+
+// Generate a unique ID
+function generateId() {
+  return 'msg_' + Math.random().toString(36).substring(2, 15);
 }
 
 const server = http.createServer(async (req, res) => {
   console.log(`${req.method} ${req.url}`);
+
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
   // Health check
   if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'healthy',
-      hasCredentials: !!accessToken,
-      subscription: oauthCreds.subscriptionType || 'unknown',
-      nodeVersion: process.version
+      hasCredentials: !!oauthToken,
+      subscription: subscriptionType,
+      nodeVersion: process.version,
+      method: 'claude-cli'
     }));
     return;
   }
@@ -96,77 +155,155 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const requestData = JSON.parse(body);
+        const { messages, model, max_tokens, stream } = requestData;
 
-        // Try to get credentials from header if not in env
-        let token = accessToken;
-        if (!token) {
+        if (!messages || !Array.isArray(messages)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: { type: 'invalid_request_error', message: 'messages array required' }
+          }));
+          return;
+        }
+
+        // Check for credentials from header if not in env
+        if (!oauthToken) {
           const headerCreds = req.headers['x-oauth-creds'];
           if (headerCreds) {
             try {
               const parsed = JSON.parse(headerCreds);
               if (parsed.claudeAiOauth?.accessToken) {
-                token = parsed.claudeAiOauth.accessToken;
+                process.env.CLAUDE_CODE_OAUTH_TOKEN = parsed.claudeAiOauth.accessToken;
+                console.log('Using OAuth token from header');
               } else if (parsed.accessToken) {
-                token = parsed.accessToken;
+                process.env.CLAUDE_CODE_OAUTH_TOKEN = parsed.accessToken;
+                console.log('Using OAuth token from header');
               }
-              console.log('Using credentials from header');
             } catch (e) {
               console.error('Failed to parse header credentials:', e.message);
             }
           }
         }
 
-        if (!token) {
+        if (!process.env.CLAUDE_CODE_OAUTH_TOKEN) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
-            error: {
-              type: 'authentication_error',
-              message: 'No OAuth token available'
-            }
+            error: { type: 'authentication_error', message: 'No OAuth token available' }
           }));
           return;
         }
 
-        // Check if streaming is requested
-        const isStreaming = requestData.stream === true;
+        const prompt = messagesToPrompt(messages);
 
-        if (isStreaming) {
-          // Streaming response
-          const apiRes = await makeAnthropicRequest(token, { ...requestData, stream: true }, true);
-
-          res.writeHead(apiRes.statusCode, {
+        if (stream) {
+          // Streaming response - use JSON mode and simulate SSE
+          res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
           });
 
-          apiRes.on('data', (chunk) => {
-            res.write(chunk);
-          });
+          const msgId = generateId();
 
-          apiRes.on('end', () => {
-            res.end();
-          });
+          // Send message_start event
+          res.write(`event: message_start\ndata: ${JSON.stringify({
+            type: 'message_start',
+            message: {
+              id: msgId,
+              type: 'message',
+              role: 'assistant',
+              content: [],
+              model: model || 'claude-sonnet-4-20250514',
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 0, output_tokens: 0 }
+            }
+          })}\n\n`);
 
-          apiRes.on('error', (err) => {
-            console.error('Stream error:', err);
+          // Send content_block_start
+          res.write(`event: content_block_start\ndata: ${JSON.stringify({
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'text', text: '' }
+          })}\n\n`);
+
+          try {
+            // Use non-streaming mode and simulate streaming with the result
+            const result = await runClaude(prompt, model, max_tokens, false);
+            const text = result.result || result.text || JSON.stringify(result);
+
+            // Send the text as a single delta (simulated streaming)
+            res.write(`event: content_block_delta\ndata: ${JSON.stringify({
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text }
+            })}\n\n`);
+
+            // Send content_block_stop
+            res.write(`event: content_block_stop\ndata: ${JSON.stringify({
+              type: 'content_block_stop',
+              index: 0
+            })}\n\n`);
+
+            // Send message_delta with stop reason
+            res.write(`event: message_delta\ndata: ${JSON.stringify({
+              type: 'message_delta',
+              delta: { stop_reason: 'end_turn', stop_sequence: null },
+              usage: { output_tokens: Math.ceil(text.length / 4) }
+            })}\n\n`);
+
+            // Send message_stop
+            res.write(`event: message_stop\ndata: ${JSON.stringify({
+              type: 'message_stop'
+            })}\n\n`);
+
             res.end();
-          });
+
+          } catch (error) {
+            console.error('Stream error:', error);
+            res.write(`event: error\ndata: ${JSON.stringify({
+              type: 'error',
+              error: { type: 'api_error', message: error.message }
+            })}\n\n`);
+            res.end();
+          }
+
         } else {
           // Non-streaming response
-          const result = await makeAnthropicRequest(token, { ...requestData, stream: false }, false);
+          try {
+            const result = await runClaude(prompt, model, max_tokens, false);
+            const text = result.result || result.text || JSON.stringify(result);
 
-          res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
-          res.end(result.data);
-        }
-      } catch (error) {
-        console.error('Error:', error);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          error: {
-            type: 'api_error',
-            message: error.message
+            const response = {
+              id: generateId(),
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'text', text }],
+              model: model || 'claude-sonnet-4-20250514',
+              stop_reason: 'end_turn',
+              stop_sequence: null,
+              usage: {
+                input_tokens: prompt.length / 4, // Rough estimate
+                output_tokens: text.length / 4
+              }
+            };
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(response));
+
+          } catch (error) {
+            console.error('Error:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: { type: 'api_error', message: error.message }
+            }));
           }
+        }
+
+      } catch (error) {
+        console.error('Parse error:', error);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: { type: 'invalid_request_error', message: error.message }
         }));
       }
     });
@@ -191,6 +328,7 @@ server.on('error', (err) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Container server listening on ${HOST}:${PORT}`);
+  console.log('Using Claude CLI for API requests');
 });
 
 process.on('uncaughtException', (err) => {
