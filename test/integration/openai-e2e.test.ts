@@ -28,6 +28,7 @@ describe('OpenAI Chat Completions E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'gpt-4o',
@@ -60,6 +61,7 @@ describe('OpenAI Chat Completions E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'gpt-4o',
@@ -88,6 +90,7 @@ describe('OpenAI Chat Completions E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'gpt-4o',
@@ -112,6 +115,7 @@ describe('OpenAI Chat Completions E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'gpt-4o',
@@ -164,6 +168,7 @@ describe('OpenAI Chat Completions E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'gpt-4o',
@@ -198,6 +203,7 @@ describe('OpenAI Chat Completions E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'gpt-4o',
@@ -215,6 +221,7 @@ describe('OpenAI Chat Completions E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'gpt-4o',

@@ -28,6 +28,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
@@ -61,6 +62,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
@@ -86,6 +88,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
@@ -106,6 +109,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
@@ -129,6 +133,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
@@ -193,6 +198,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
@@ -225,6 +231,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
@@ -244,6 +251,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
@@ -259,6 +267,7 @@ describe('Anthropic Messages E2E', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...ctx.authHeaders,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',

@@ -17,6 +17,7 @@
     "test:run": "vitest run",
     "test:unit": "vitest run",
     "test:e2e": "vitest run --config vitest.integration.config.ts",
+    "test:e2e:remote": "TEST_PROXY_URL=${TEST_PROXY_URL:-http://localhost:8080} vitest run --config vitest.integration.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:all": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage",
