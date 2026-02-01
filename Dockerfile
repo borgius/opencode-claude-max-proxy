@@ -10,8 +10,8 @@ RUN useradd -m -s /bin/bash claude && \
 
 WORKDIR /app
 
-# Copy the server file (v5 with persistent process)
-COPY src/container-server-v5.cjs ./container-server.cjs
+# Copy the server file (v6 with persistent process, no sessions)
+COPY src/container-server-v6.cjs ./container-server.cjs
 
 # Set ownership
 RUN chown -R claude:claude /app
