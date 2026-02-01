@@ -8,6 +8,8 @@
     "dev": "wrangler dev",
     "deploy": "./deploy.sh",
     "deploy:manual": "wrangler deploy",
+    "update-creds": "./update-creds.sh",
+    "test:local": "./test-local.sh",
     "typecheck": "tsc --noEmit",
     "tail": "wrangler tail",
     "containers:list": "wrangler containers list",

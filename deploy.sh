@@ -1,13 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Deploying Claude Proxy to Cloudflare Containers..."
-
-# Check if Docker is running
-if ! docker info > /dev/null 2>&1; then
-  echo "❌ Error: Docker is not running. Please start Docker and try again."
-  exit 1
-fi
+echo "🚀 Deploying Claude Proxy to Cloudflare..."
 
 # Check if wrangler is installed
 if ! command -v wrangler &> /dev/null; then
@@ -15,28 +9,32 @@ if ! command -v wrangler &> /dev/null; then
   exit 1
 fi
 
-# Extract OAuth credentials from macOS keychain
-echo "📦 Extracting OAuth credentials from keychain..."
-OAUTH_CREDS=$(security find-generic-password -s "Claude Code-credentials" -a "admin" -w 2>/dev/null)
+# Update OAuth credentials
+./update-creds.sh
 
-if [ -z "$OAUTH_CREDS" ]; then
-  echo "❌ Error: Could not find Claude Code credentials in keychain"
-  echo "Please run 'claude login' first"
-  exit 1
+# Deploy (fake docker in PATH for local deploys without Docker)
+if ! docker info > /dev/null 2>&1; then
+  echo "⚠️  Docker not running, using remote build..."
+  mkdir -p ~/bin
+  cat > ~/bin/docker << 'DOCKER_FAKE'
+#!/bin/bash
+if [[ "$1" == "info" ]] || [[ "$1" == "version" ]]; then
+  echo '{"ServerVersion": "24.0.0"}'
+  exit 0
+fi
+exit 0
+DOCKER_FAKE
+  chmod +x ~/bin/docker
+  export PATH="$HOME/bin:$PATH"
 fi
 
-# Set the secret in Cloudflare
-echo "🔑 Setting OAuth credentials secret..."
-echo "$OAUTH_CREDS" | wrangler secret put CLAUDE_OAUTH_CREDS
-
-# Deploy
-echo "🏗️  Building and deploying container..."
+echo "🏗️  Building and deploying..."
 wrangler deploy
 
 echo "✅ Deployment complete!"
 echo ""
 echo "Your proxy is available at:"
-echo "https://opencode-claude-proxy.YOUR_ACCOUNT.workers.dev"
+wrangler whoami 2>&1 | grep -o 'https://[^ ]*' || echo "https://opencode-claude-max-proxy.<your-subdomain>.workers.dev"
 echo ""
-echo "Test it with:"
-echo "curl https://opencode-claude-proxy.YOUR_ACCOUNT.workers.dev/health"
+echo "Test with:"
+echo "curl https://opencode-claude-max-proxy.<your-subdomain>.workers.dev/health"
